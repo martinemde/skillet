@@ -62,11 +62,26 @@ type ToolOperation struct {
 
 // Styles for terminal output
 var (
-	successIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
-	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
-	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	separator   = dimStyle.Render("───────────────────────────────────────────")
+	successIcon  = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
+	errorIcon    = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
+	emptyIcon    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
+	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	separator    = dimStyle.Render("───────────────────────────────────────────")
+
+	// Verbose content styles
+	thinkingStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("6")). // Cyan
+			Italic(true).
+			MarginLeft(2)
+
+	outputStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")). // Dim
+			MarginLeft(2).
+			PaddingLeft(1)
+
+	commentaryStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("7")). // Light gray
+			MarginLeft(2)
 )
 
 // Formatter formats stream-json output from Claude CLI
@@ -138,8 +153,20 @@ func (f *Formatter) Format(input io.Reader) error {
 			if msg.Message != nil {
 				for _, content := range msg.Message.Content {
 					switch content.Type {
+					case "thinking":
+						// Display thinking blocks in verbose mode
+						if f.verbose && content.Text != "" {
+							fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
+							fmt.Fprintln(f.output)
+						}
+
 					case "text":
 						if content.Text != "" {
+							// In verbose mode, stream commentary as it comes in
+							if f.verbose {
+								fmt.Fprintln(f.output, commentaryStyle.Render(content.Text))
+								fmt.Fprintln(f.output)
+							}
 							textBuilder.WriteString(content.Text)
 						}
 
@@ -338,11 +365,102 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 
 // printToolDetails prints detailed tool information in verbose mode
 func (f *Formatter) printToolDetails(tool ToolOperation) {
-	// Print input parameters
+	// Show tool-specific output based on the tool type
+	switch tool.Name {
+	case "Read":
+		f.printReadOutput(tool)
+	case "Write", "Edit":
+		f.printWriteOutput(tool)
+	case "Bash":
+		f.printBashOutput(tool)
+	case "Grep", "Glob":
+		f.printSearchOutput(tool)
+	default:
+		// For other tools, show basic input/output
+		f.printGenericToolOutput(tool)
+	}
+
+	fmt.Fprintln(f.output) // Add spacing between tools in verbose mode
+}
+
+// printReadOutput shows file contents for Read operations
+func (f *Formatter) printReadOutput(tool ToolOperation) {
+	if tool.Result == nil {
+		return
+	}
+
+	// Extract file contents from result
+	resultStr := f.extractResultText(tool.Result)
+	if resultStr != "" {
+		// Show first 20 lines or full content if shorter
+		lines := strings.Split(resultStr, "\n")
+		maxLines := 20
+		if len(lines) > maxLines {
+			content := strings.Join(lines[:maxLines], "\n")
+			fmt.Fprintln(f.output, outputStyle.Render(content))
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-maxLines)))
+		} else {
+			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
+		}
+	}
+}
+
+// printWriteOutput shows confirmation for Write/Edit operations
+func (f *Formatter) printWriteOutput(tool ToolOperation) {
+	if tool.Status == "success" {
+		if filePath, ok := tool.Input["file_path"].(string); ok {
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → wrote to %s", filePath)))
+		}
+	}
+}
+
+// printBashOutput shows command output for Bash operations
+func (f *Formatter) printBashOutput(tool ToolOperation) {
+	if tool.Result == nil {
+		return
+	}
+
+	resultStr := f.extractResultText(tool.Result)
+	if resultStr != "" {
+		// Show command output with light styling
+		lines := strings.Split(resultStr, "\n")
+		maxLines := 30
+		if len(lines) > maxLines {
+			content := strings.Join(lines[:maxLines], "\n")
+			fmt.Fprintln(f.output, outputStyle.Render(content))
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-maxLines)))
+		} else {
+			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
+		}
+	}
+}
+
+// printSearchOutput shows search results for Grep/Glob operations
+func (f *Formatter) printSearchOutput(tool ToolOperation) {
+	if tool.Result == nil {
+		return
+	}
+
+	resultStr := f.extractResultText(tool.Result)
+	if resultStr != "" {
+		lines := strings.Split(resultStr, "\n")
+		maxLines := 15
+		if len(lines) > maxLines {
+			content := strings.Join(lines[:maxLines], "\n")
+			fmt.Fprintln(f.output, outputStyle.Render(content))
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more results)", len(lines)-maxLines)))
+		} else {
+			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
+		}
+	}
+}
+
+// printGenericToolOutput shows basic input/output for other tools
+func (f *Formatter) printGenericToolOutput(tool ToolOperation) {
+	// Show key input parameters
 	if len(tool.Input) > 0 {
 		for k, v := range tool.Input {
 			vStr := fmt.Sprintf("%v", v)
-			// Truncate long values
 			if len(vStr) > 100 {
 				vStr = vStr[:97] + "..."
 			}
@@ -350,22 +468,34 @@ func (f *Formatter) printToolDetails(tool ToolOperation) {
 		}
 	}
 
-	// Print result info if available
+	// Show result summary
 	if tool.Result != nil && tool.Status != "error" {
-		switch v := tool.Result.(type) {
-		case string:
-			if v != "" && len(v) < 200 {
-				fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → result: %s", v)))
-			}
-		case []interface{}:
-			if len(v) > 0 {
-				// Show count for arrays
-				fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %d items", len(v))))
-			}
+		resultStr := f.extractResultText(tool.Result)
+		if resultStr != "" && len(resultStr) < 200 {
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s", resultStr)))
 		}
 	}
+}
 
-	fmt.Fprintln(f.output) // Add spacing between tools in verbose mode
+// extractResultText extracts text from a tool result
+func (f *Formatter) extractResultText(result interface{}) string {
+	switch v := result.(type) {
+	case string:
+		return v
+	case []interface{}:
+		// Handle array of content blocks
+		var builder strings.Builder
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if text, ok := m["text"].(string); ok {
+					builder.WriteString(text)
+				}
+			}
+		}
+		return builder.String()
+	default:
+		return fmt.Sprintf("%v", result)
+	}
 }
 
 // printUsage prints token usage information
