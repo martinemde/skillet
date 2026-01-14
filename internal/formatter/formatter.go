@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"time"
 
-	"github.com/charmbracelet/log"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Message represents different types of messages in the stream
@@ -47,42 +49,64 @@ type Usage struct {
 	ServerToolUse            map[string]int `json:"server_tool_use,omitempty"`
 }
 
+// ToolOperation represents a tool call and its result
+type ToolOperation struct {
+	ID      string
+	Name    string
+	Target  string // filename, command, or key parameter
+	Status  string // "pending", "success", "error", "empty"
+	Error   string
+	Input   map[string]interface{}
+	Result  interface{}
+}
+
+// Styles for terminal output
+var (
+	successIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
+	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
+	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
+	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	separator   = dimStyle.Render("───────────────────────────────────────────")
+)
+
 // Formatter formats stream-json output from Claude CLI
 type Formatter struct {
-	output    io.Writer
-	verbose   bool
-	showUsage bool
-	logger    *log.Logger
-	toolCount int
+	output          io.Writer
+	verbose         bool
+	showUsage       bool
+	outputFormat    string
+	toolCount       int
+	tools           []ToolOperation
+	startTime       time.Time
+	toolCallMap     map[string]int // Maps tool_use_id to index in tools slice
+	printedToolsHdr bool           // Track if we've printed "Tools:" header
 }
 
 // New creates a new Formatter
-func New(output io.Writer, verbose, showUsage bool) *Formatter {
-	logger := log.New(output)
-	logger.SetReportCaller(false)
-	logger.SetReportTimestamp(false)
-
-	// Set log level based on verbose flag
-	if verbose {
-		logger.SetLevel(log.DebugLevel)
-	} else {
-		logger.SetLevel(log.InfoLevel)
-	}
-
+func New(output io.Writer, verbose, showUsage bool, outputFormat string) *Formatter {
 	return &Formatter{
-		output:    output,
-		verbose:   verbose,
-		showUsage: showUsage,
-		logger:    logger,
-		toolCount: 0,
+		output:          output,
+		verbose:         verbose,
+		showUsage:       showUsage,
+		outputFormat:    outputFormat,
+		toolCount:       0,
+		tools:           make([]ToolOperation, 0),
+		startTime:       time.Now(),
+		toolCallMap:     make(map[string]int),
+		printedToolsHdr: false,
 	}
 }
 
 // Format reads stream-json input and formats it
 func (f *Formatter) Format(input io.Reader) error {
+	// In verbose mode with stream-json output, passthrough raw JSON directly
+	if f.verbose && (f.outputFormat == "stream-json" || f.outputFormat == "json") {
+		_, err := io.Copy(f.output, input)
+		return err
+	}
+
 	scanner := bufio.NewScanner(input)
 	var textBuilder strings.Builder
-	toolCallMap := make(map[string]string) // Maps tool_use_id to tool name
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -92,17 +116,22 @@ func (f *Formatter) Format(input io.Reader) error {
 
 		var msg Message
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			f.logger.Debug("Failed to parse JSON", "error", err)
+			if f.verbose {
+				fmt.Fprintf(os.Stderr, "DEBU Failed to parse JSON: %v\n", err)
+				fmt.Fprintf(os.Stderr, "DEBU stream data=%s\n", line)
+			}
 			continue
 		}
 
-		// In verbose mode, print the raw JSON
-		f.logger.Debug("stream", "data", line)
+		// In verbose mode, print the raw JSON stream to stderr
+		if f.verbose {
+			fmt.Fprintf(os.Stderr, "DEBU stream data=%s\n", line)
+		}
 
 		switch msg.Type {
 		case "system":
 			if msg.Subtype == "init" {
-				f.logger.Info("Session initialized")
+				fmt.Fprintln(f.output, successIcon.String()+" Session started")
 			}
 
 		case "assistant":
@@ -116,15 +145,16 @@ func (f *Formatter) Format(input io.Reader) error {
 
 					case "tool_use":
 						f.toolCount++
-						// Store the tool name for later reference
-						toolCallMap[content.ID] = content.Name
-
-						// Format the input for display
-						inputStr := f.formatToolInput(content.Input)
-						f.logger.Info("Tool call",
-							"tool", content.Name,
-							"id", fmt.Sprintf("#%d", f.toolCount),
-							"input", inputStr)
+						// Create a new tool operation
+						op := ToolOperation{
+							ID:     content.ID,
+							Name:   content.Name,
+							Target: f.extractTarget(content.Name, content.Input),
+							Status: "pending",
+							Input:  content.Input,
+						}
+						f.toolCallMap[content.ID] = len(f.tools)
+						f.tools = append(f.tools, op)
 					}
 				}
 			}
@@ -134,30 +164,30 @@ func (f *Formatter) Format(input io.Reader) error {
 			if msg.Message != nil {
 				for _, content := range msg.Message.Content {
 					if content.Type == "tool_result" && content.ToolUseID != "" {
-						toolName := toolCallMap[content.ToolUseID]
-						resultStr := f.formatToolResult(content.Content)
-
-						f.logger.Info("Tool result",
-							"tool", toolName,
-							"result", resultStr)
+						if idx, ok := f.toolCallMap[content.ToolUseID]; ok {
+							f.tools[idx].Result = content.Content
+							f.tools[idx].Status = f.determineStatus(content.Content)
+							if f.tools[idx].Status == "error" {
+								f.tools[idx].Error = f.extractError(content.Content)
+							}
+							// Immediately print this tool operation
+							f.printToolOperation(f.tools[idx])
+						}
 					}
 				}
 			}
 
 		case "result":
-			// Print any accumulated text
-			if textBuilder.Len() > 0 {
-				text := textBuilder.String()
-				// Print the assistant's text response
-				if text != "" {
-					_, _ = fmt.Fprintln(f.output, text)
-				}
-				textBuilder.Reset()
+			// Print separator if we printed any tools
+			if f.printedToolsHdr {
+				fmt.Fprintln(f.output)
+				fmt.Fprintln(f.output, separator)
+				fmt.Fprintln(f.output)
 			}
 
-			// Print result if it's different from accumulated text
-			if msg.Result != "" && msg.Result != textBuilder.String() {
-				_, _ = fmt.Fprintln(f.output, msg.Result)
+			// Print only the final result
+			if msg.Result != "" {
+				fmt.Fprintln(f.output, msg.Result)
 			}
 
 			// Print usage information if requested
@@ -165,72 +195,177 @@ func (f *Formatter) Format(input io.Reader) error {
 				f.printUsage(msg.Usage)
 			}
 
-			// Print error information if present
+			// Print completion status
+			elapsed := time.Since(f.startTime)
+			fmt.Fprintln(f.output)
 			if msg.IsError {
-				f.logger.Error("Execution failed", "subtype", msg.Subtype)
+				fmt.Fprintln(f.output, errorIcon.String()+" Failed")
 			} else {
-				f.logger.Info("Execution completed")
+				fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
 			}
 		}
-	}
-
-	// Print any remaining text
-	if textBuilder.Len() > 0 {
-		_, _ = fmt.Fprint(f.output, textBuilder.String())
 	}
 
 	return scanner.Err()
 }
 
-// formatToolInput formats tool input for display
-func (f *Formatter) formatToolInput(input map[string]interface{}) string {
-	if len(input) == 0 {
-		return ""
-	}
-
-	// Create a compact representation
-	parts := make([]string, 0, len(input))
-	for k, v := range input {
-		vStr := fmt.Sprintf("%v", v)
-		// Truncate long values
-		if len(vStr) > 60 {
-			vStr = vStr[:57] + "..."
+// extractTarget extracts the key parameter from tool input
+func (f *Formatter) extractTarget(toolName string, input map[string]interface{}) string {
+	switch toolName {
+	case "Read", "Write", "Edit":
+		if path, ok := input["file_path"].(string); ok {
+			// Get just the filename from the path
+			parts := strings.Split(path, "/")
+			return parts[len(parts)-1]
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s", k, vStr))
+	case "Bash":
+		if cmd, ok := input["command"].(string); ok {
+			// Get first word of command
+			parts := strings.Fields(cmd)
+			if len(parts) > 0 {
+				return parts[0]
+			}
+		}
+	case "Grep":
+		if pattern, ok := input["pattern"].(string); ok {
+			if len(pattern) > 20 {
+				return pattern[:17] + "..."
+			}
+			return pattern
+		}
+	case "Glob":
+		if pattern, ok := input["pattern"].(string); ok {
+			return pattern
+		}
 	}
-	return strings.Join(parts, ", ")
+	return ""
 }
 
-// formatToolResult formats tool result for display
-func (f *Formatter) formatToolResult(content interface{}) string {
+// determineStatus determines the status of a tool result
+func (f *Formatter) determineStatus(content interface{}) string {
+	// Check if it's an error
 	switch v := content.(type) {
 	case string:
-		if len(v) > 100 {
-			return v[:97] + "..."
+		if strings.Contains(v, "<tool_use_error>") || strings.Contains(v, "error") {
+			return "error"
 		}
-		return v
+		if v == "" || v == "[]" {
+			return "empty"
+		}
 	case []interface{}:
-		// Handle array of content blocks
-		var builder strings.Builder
+		if len(v) == 0 {
+			return "empty"
+		}
+		// Check array content for errors
 		for _, item := range v {
 			if m, ok := item.(map[string]interface{}); ok {
 				if text, ok := m["text"].(string); ok {
-					builder.WriteString(text)
+					if strings.Contains(text, "<tool_use_error>") {
+						return "error"
+					}
 				}
 			}
 		}
-		result := builder.String()
-		if len(result) > 100 {
-			return result[:97] + "..."
-		}
-		return result
-	default:
-		str := fmt.Sprintf("%v", content)
-		if len(str) > 100 {
-			return str[:97] + "..."
-		}
-		return str
 	}
+	return "success"
+}
+
+// extractError extracts error message from tool result
+func (f *Formatter) extractError(content interface{}) string {
+	switch v := content.(type) {
+	case string:
+		// Extract text between <tool_use_error> tags
+		if start := strings.Index(v, "<tool_use_error>"); start != -1 {
+			if end := strings.Index(v, "</tool_use_error>"); end != -1 {
+				return v[start+16 : end]
+			}
+		}
+		// Return first 100 chars if it contains "error"
+		if strings.Contains(strings.ToLower(v), "error") {
+			if len(v) > 100 {
+				return v[:97] + "..."
+			}
+			return v
+		}
+	case []interface{}:
+		// Check array content for errors
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if text, ok := m["text"].(string); ok {
+					if strings.Contains(text, "<tool_use_error>") {
+						if start := strings.Index(text, "<tool_use_error>"); start != -1 {
+							if end := strings.Index(text, "</tool_use_error>"); end != -1 {
+								return text[start+16 : end]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return "unknown error"
+}
+
+// printToolOperation prints a single tool operation as it completes
+func (f *Formatter) printToolOperation(tool ToolOperation) {
+	// Track that we've printed at least one tool
+	f.printedToolsHdr = true
+
+	// Choose icon based on status
+	icon := successIcon
+	switch tool.Status {
+	case "error":
+		icon = errorIcon
+	case "empty":
+		icon = emptyIcon
+	}
+
+	// Format tool line (no indent)
+	line := fmt.Sprintf("%s %s", icon.String(), tool.Name)
+	if tool.Target != "" {
+		line += " " + tool.Target
+	}
+	if tool.Status == "error" && tool.Error != "" {
+		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
+	}
+	fmt.Fprintln(f.output, line)
+
+	// In verbose mode, show details
+	if f.verbose {
+		f.printToolDetails(tool)
+	}
+}
+
+// printToolDetails prints detailed tool information in verbose mode
+func (f *Formatter) printToolDetails(tool ToolOperation) {
+	// Print input parameters
+	if len(tool.Input) > 0 {
+		for k, v := range tool.Input {
+			vStr := fmt.Sprintf("%v", v)
+			// Truncate long values
+			if len(vStr) > 100 {
+				vStr = vStr[:97] + "..."
+			}
+			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s: %s", k, vStr)))
+		}
+	}
+
+	// Print result info if available
+	if tool.Result != nil && tool.Status != "error" {
+		switch v := tool.Result.(type) {
+		case string:
+			if v != "" && len(v) < 200 {
+				fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → result: %s", v)))
+			}
+		case []interface{}:
+			if len(v) > 0 {
+				// Show count for arrays
+				fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %d items", len(v))))
+			}
+		}
+	}
+
+	fmt.Fprintln(f.output) // Add spacing between tools in verbose mode
 }
 
 // printUsage prints token usage information
