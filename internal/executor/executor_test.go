@@ -76,16 +76,16 @@ func TestBuildArgs_Basic(t *testing.T) {
 		t.Error("Args should contain '--permission-mode acceptEdits'")
 	}
 
-	// Check for system prompt
-	hasSystemPrompt := false
+	// Check for append system prompt
+	hasAppendSystemPrompt := false
 	for i, arg := range args {
-		if arg == "--system-prompt" && i+1 < len(args) {
-			hasSystemPrompt = true
+		if arg == "--append-system-prompt" && i+1 < len(args) {
+			hasAppendSystemPrompt = true
 			break
 		}
 	}
-	if !hasSystemPrompt {
-		t.Error("Args should contain '--system-prompt'")
+	if !hasAppendSystemPrompt {
+		t.Error("Args should contain '--append-system-prompt'")
 	}
 }
 
