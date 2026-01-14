@@ -24,6 +24,56 @@ func main() {
 	}
 }
 
+// separateFlags separates flag arguments from positional arguments.
+// This allows flags to appear anywhere in the argument list, not just before positional args.
+// Returns (flagArgs, positionalArgs).
+func separateFlags(args []string) ([]string, []string) {
+	var flagArgs []string
+	var posArgs []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		// Check if this is a flag (starts with -)
+		if len(arg) > 0 && arg[0] == '-' {
+			flagArgs = append(flagArgs, arg)
+
+			// Check if this flag takes a value
+			// Flags with = are handled by flag package (e.g., --prompt=value)
+			// Flags without = may have their value as the next argument
+			hasEquals := false
+			for _, c := range arg {
+				if c == '=' {
+					hasEquals = true
+					break
+				}
+			}
+
+			// If the flag doesn't contain =, and there's a next arg that doesn't start with -,
+			// it might be the flag's value. We include it with the flags.
+			if !hasEquals && i+1 < len(args) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
+				// Check if this is a boolean flag (these don't take values)
+				isBoolFlag := arg == "-version" || arg == "--version" ||
+					arg == "-help" || arg == "--help" ||
+					arg == "-verbose" || arg == "--verbose" ||
+					arg == "-usage" || arg == "--usage" ||
+					arg == "-dry-run" || arg == "--dry-run"
+
+				if !isBoolFlag {
+					// This is likely a flag that takes a value, so include the next arg
+					i++
+					flagArgs = append(flagArgs, args[i])
+				}
+			}
+		} else {
+			// This is a positional argument
+			posArgs = append(posArgs, arg)
+		}
+	}
+
+	return flagArgs, posArgs
+}
+
 func run(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.SetOutput(stderr)
@@ -41,7 +91,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
 	)
 
-	if err := flags.Parse(args[1:]); err != nil {
+	// Separate flags from positional arguments to support flags in any position
+	flagArgs, posArgs := separateFlags(args[1:])
+
+	if err := flags.Parse(flagArgs); err != nil {
 		return err
 	}
 
@@ -50,12 +103,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	if *showHelp || flags.NArg() == 0 {
+	if *showHelp || len(posArgs) == 0 {
 		printHelp(stdout)
 		return nil
 	}
 
-	skillPath := flags.Arg(0)
+	skillPath := posArgs[0]
 
 	// Resolve the skill path (handles files, directories, .claude/skills shortcuts, and URLs)
 	result, err := resolver.Resolve(skillPath)
@@ -100,7 +153,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	exec.SetOutput(pw, stderr)
 
 	// Create formatter
-	form := formatter.New(stdout, *verbose, *showUsage, *outputFormat)
+	// If user explicitly set --output-format, we're in passthrough mode
+	passthroughMode := *outputFormat != ""
+	form := formatter.New(stdout, *verbose, *showUsage, passthroughMode)
 
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())

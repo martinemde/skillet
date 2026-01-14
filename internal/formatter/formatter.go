@@ -51,22 +51,22 @@ type Usage struct {
 
 // ToolOperation represents a tool call and its result
 type ToolOperation struct {
-	ID      string
-	Name    string
-	Target  string // filename, command, or key parameter
-	Status  string // "pending", "success", "error", "empty"
-	Error   string
-	Input   map[string]interface{}
-	Result  interface{}
+	ID     string
+	Name   string
+	Target string // filename, command, or key parameter
+	Status string // "pending", "success", "error", "empty"
+	Error  string
+	Input  map[string]interface{}
+	Result interface{}
 }
 
 // Styles for terminal output
 var (
-	successIcon  = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
-	errorIcon    = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
-	emptyIcon    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
-	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	separator    = dimStyle.Render("───────────────────────────────────────────")
+	successIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
+	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
+	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
+	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	separator   = dimStyle.Render("───────────────────────────────────────────")
 
 	// Verbose content styles
 	thinkingStyle = lipgloss.NewStyle().
@@ -89,7 +89,7 @@ type Formatter struct {
 	output          io.Writer
 	verbose         bool
 	showUsage       bool
-	outputFormat    string
+	passthroughMode bool // If true, stream output directly without parsing
 	toolCount       int
 	tools           []ToolOperation
 	startTime       time.Time
@@ -98,12 +98,12 @@ type Formatter struct {
 }
 
 // New creates a new Formatter
-func New(output io.Writer, verbose, showUsage bool, outputFormat string) *Formatter {
+func New(output io.Writer, verbose, showUsage, passthroughMode bool) *Formatter {
 	return &Formatter{
 		output:          output,
 		verbose:         verbose,
 		showUsage:       showUsage,
-		outputFormat:    outputFormat,
+		passthroughMode: passthroughMode,
 		toolCount:       0,
 		tools:           make([]ToolOperation, 0),
 		startTime:       time.Now(),
@@ -114,8 +114,8 @@ func New(output io.Writer, verbose, showUsage bool, outputFormat string) *Format
 
 // Format reads stream-json input and formats it
 func (f *Formatter) Format(input io.Reader) error {
-	// In verbose mode with stream-json output, passthrough raw JSON directly
-	if f.verbose && (f.outputFormat == "stream-json" || f.outputFormat == "json") {
+	// If user explicitly set --output-format, passthrough raw output directly
+	if f.passthroughMode {
 		_, err := io.Copy(f.output, input)
 		return err
 	}

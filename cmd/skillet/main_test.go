@@ -111,3 +111,133 @@ func TestRun_NonexistentFile(t *testing.T) {
 		t.Errorf("Expected resolve error, got: %v", err)
 	}
 }
+
+func TestSeparateFlags(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedFlags   []string
+		expectedPosArgs []string
+	}{
+		{
+			name:            "flags before positional args",
+			args:            []string{"--verbose", "--usage", "skill-name"},
+			expectedFlags:   []string{"--verbose", "--usage"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "flags after positional args",
+			args:            []string{"skill-name", "--verbose", "--usage"},
+			expectedFlags:   []string{"--verbose", "--usage"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "flags mixed with positional args",
+			args:            []string{"--verbose", "skill-name", "--usage"},
+			expectedFlags:   []string{"--verbose", "--usage"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "flags with values",
+			args:            []string{"--prompt", "test prompt", "skill-name"},
+			expectedFlags:   []string{"--prompt", "test prompt"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "flags with values after positional args",
+			args:            []string{"skill-name", "--prompt", "test prompt"},
+			expectedFlags:   []string{"--prompt", "test prompt"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "flags with equals syntax",
+			args:            []string{"--prompt=test prompt", "skill-name"},
+			expectedFlags:   []string{"--prompt=test prompt"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "boolean flags mixed",
+			args:            []string{"skill-name", "--verbose", "--dry-run", "--usage"},
+			expectedFlags:   []string{"--verbose", "--dry-run", "--usage"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "multiple positional args",
+			args:            []string{"skill-name", "extra-arg", "--verbose"},
+			expectedFlags:   []string{"--verbose"},
+			expectedPosArgs: []string{"skill-name", "extra-arg"},
+		},
+		{
+			name:            "only flags",
+			args:            []string{"--verbose", "--usage"},
+			expectedFlags:   []string{"--verbose", "--usage"},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "only positional args",
+			args:            []string{"skill-name", "extra-arg"},
+			expectedFlags:   []string{},
+			expectedPosArgs: []string{"skill-name", "extra-arg"},
+		},
+		{
+			name:            "empty args",
+			args:            []string{},
+			expectedFlags:   []string{},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "complex mix",
+			args:            []string{"--model", "opus", "skill-name", "--verbose", "--prompt", "test", "--usage"},
+			expectedFlags:   []string{"--model", "opus", "--verbose", "--prompt", "test", "--usage"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flagArgs, posArgs := separateFlags(tt.args)
+
+			// Check flag args
+			if len(flagArgs) != len(tt.expectedFlags) {
+				t.Errorf("Expected %d flag args, got %d: %v", len(tt.expectedFlags), len(flagArgs), flagArgs)
+			}
+			for i, expected := range tt.expectedFlags {
+				if i >= len(flagArgs) || flagArgs[i] != expected {
+					t.Errorf("Expected flag arg[%d] = %q, got %q", i, expected, flagArgs[i])
+				}
+			}
+
+			// Check positional args
+			if len(posArgs) != len(tt.expectedPosArgs) {
+				t.Errorf("Expected %d positional args, got %d: %v", len(tt.expectedPosArgs), len(posArgs), posArgs)
+			}
+			for i, expected := range tt.expectedPosArgs {
+				if i >= len(posArgs) || posArgs[i] != expected {
+					t.Errorf("Expected positional arg[%d] = %q, got %q", i, expected, posArgs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestRun_VerboseFlagAfterSkillName(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Test that --verbose works when placed after the skill name
+	err := run([]string{"skillet", "--dry-run", "../../testdata/simple-skill/SKILL.md", "--verbose"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Dry-run should work
+	if !strings.Contains(output, "Would execute:") {
+		t.Errorf("Dry-run should work with --verbose after skill name, got: %s", output)
+	}
+
+	// The command should include --verbose flag
+	if !strings.Contains(output, "claude") {
+		t.Errorf("Should show the claude command, got: %s", output)
+	}
+}

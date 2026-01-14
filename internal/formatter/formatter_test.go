@@ -8,7 +8,7 @@ import (
 
 func TestNew(t *testing.T) {
 	var buf bytes.Buffer
-	f := New(&buf, false, false, "")
+	f := New(&buf, false, false, false)
 
 	if f.output != &buf {
 		t.Error("Formatter should store the output writer")
@@ -29,7 +29,7 @@ func TestFormat_AssistantMessage(t *testing.T) {
 {"type":"result","result":"Hello, world!","is_error":false}`
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -49,7 +49,7 @@ func TestFormat_ResultMessage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -69,7 +69,7 @@ func TestFormat_MultipleMessages(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -87,7 +87,7 @@ func TestFormat_WithUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, true, "") // showUsage = true
+	f := New(&output, false, true, false) // showUsage = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -117,7 +117,7 @@ func TestFormat_WithoutUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "") // showUsage = false
+	f := New(&output, false, false, false) // showUsage = false
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -142,7 +142,7 @@ func TestFormat_ErrorResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -163,7 +163,7 @@ func TestFormat_VerboseMode(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false, "") // verbose = true
+	f := New(&output, true, false, false) // verbose = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -187,7 +187,7 @@ func TestFormat_InvalidJSON(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false, "") // verbose mode to see error
+	f := New(&output, true, false, false) // verbose mode to see error
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -211,7 +211,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -228,7 +228,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 func TestPrintUsage(t *testing.T) {
 	var output bytes.Buffer
 
-	f := New(&output, false, true, "")
+	f := New(&output, false, true, false)
 
 	usage := &Usage{
 		InputTokens:              100,
@@ -269,7 +269,7 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -290,7 +290,7 @@ func TestFormat_ToolCall(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -311,7 +311,7 @@ func TestFormat_ToolResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -343,7 +343,7 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, "")
+	f := New(&output, false, false, false)
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -369,3 +369,66 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 	}
 }
 
+func TestFormat_PassthroughMode(t *testing.T) {
+	// When user explicitly sets --output-format, we should passthrough without parsing
+	input := `{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Raw output"}]}}
+{"type":"result","result":"Raw output","is_error":false}`
+
+	var output bytes.Buffer
+
+	// passthroughMode = true simulates user explicitly setting --output-format
+	f := New(&output, false, false, true)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// In passthrough mode, raw JSON should be output as-is
+	if !strings.Contains(result, `"type":"system"`) {
+		t.Errorf("Passthrough mode should output raw JSON, got: %s", result)
+	}
+
+	// Should NOT contain formatted output
+	if strings.Contains(result, "Session started") {
+		t.Errorf("Passthrough mode should not format output, got: %s", result)
+	}
+}
+
+func TestFormat_VerboseWithoutPassthrough(t *testing.T) {
+	// When user sets --verbose without --output-format, we should parse and show verbose TUI
+	input := `{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","text":"Let me think..."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done thinking"}]}}
+{"type":"result","result":"Done thinking","is_error":false}`
+
+	var output bytes.Buffer
+
+	// verbose = true, passthroughMode = false
+	f := New(&output, true, false, false)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should contain formatted output with thinking (in verbose mode)
+	if !strings.Contains(result, "Session started") {
+		t.Errorf("Verbose mode should format output, got: %s", result)
+	}
+
+	// Should contain thinking block in verbose mode
+	if !strings.Contains(result, "Let me think") {
+		t.Errorf("Verbose mode should show thinking blocks, got: %s", result)
+	}
+
+	// Should NOT be raw JSON
+	if strings.Contains(result, `"type":"system"`) {
+		t.Errorf("Verbose mode should not output raw JSON when passthroughMode is false, got: %s", result)
+	}
+}
