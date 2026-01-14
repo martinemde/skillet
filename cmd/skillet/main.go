@@ -100,7 +100,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	exec.SetOutput(pw, stderr)
 
 	// Create formatter
-	form := formatter.New(stdout, *verbose, *showUsage)
+	form := formatter.New(stdout, *verbose, *showUsage, *outputFormat)
 
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())

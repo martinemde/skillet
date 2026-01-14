@@ -8,7 +8,7 @@ import (
 
 func TestNew(t *testing.T) {
 	var buf bytes.Buffer
-	f := New(&buf, false, false)
+	f := New(&buf, false, false, "")
 
 	if f.output != &buf {
 		t.Error("Formatter should store the output writer")
@@ -24,21 +24,22 @@ func TestNew(t *testing.T) {
 }
 
 func TestFormat_AssistantMessage(t *testing.T) {
-	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello, world!"}]}}`
+	// Test with a result message so text gets printed
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello, world!"}]}}
+{"type":"result","result":"Hello, world!","is_error":false}`
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
 		t.Fatalf("Format failed: %v", err)
 	}
 
-	// The text is buffered internally and printed when result arrives
-	// Without a result message, text remains in the buffer but gets printed at end
+	// The text is printed when result message arrives
 	result := output.String()
 	if !strings.Contains(result, "Hello, world!") {
-		t.Errorf("Output should contain buffered text, got: %s", result)
+		t.Errorf("Output should contain text, got: %s", result)
 	}
 }
 
@@ -48,7 +49,7 @@ func TestFormat_ResultMessage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -68,7 +69,7 @@ func TestFormat_MultipleMessages(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -86,7 +87,7 @@ func TestFormat_WithUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, true) // showUsage = true
+	f := New(&output, false, true, "") // showUsage = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -116,7 +117,7 @@ func TestFormat_WithoutUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false) // showUsage = false
+	f := New(&output, false, false, "") // showUsage = false
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -141,7 +142,7 @@ func TestFormat_ErrorResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -150,22 +151,19 @@ func TestFormat_ErrorResult(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain error information
-	if !strings.Contains(result, "ERRO") {
-		t.Errorf("Output should contain error marker, got: %s", result)
-	}
-
-	if !strings.Contains(result, "permission_denied") {
-		t.Errorf("Output should contain error subtype, got: %s", result)
+	// Should contain error marker (✗ Failed)
+	if !strings.Contains(result, "Failed") {
+		t.Errorf("Output should contain 'Failed', got: %s", result)
 	}
 }
 
 func TestFormat_VerboseMode(t *testing.T) {
-	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Test"}]}}`
+	input := `{"type":"system","subtype":"init"}
+{"type":"result","result":"Test message","is_error":false}`
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false) // verbose = true
+	f := New(&output, true, false, "") // verbose = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -174,14 +172,13 @@ func TestFormat_VerboseMode(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain debug output with raw JSON
-	if !strings.Contains(result, "DEBU") {
-		t.Errorf("Verbose output should contain DEBU marker, got: %s", result)
+	// In verbose mode, debug output goes to stderr, not the main output
+	// Verify the result message appears and session started appears
+	if !strings.Contains(result, "Test message") {
+		t.Errorf("Verbose output should contain result message, got: %s", result)
 	}
-
-	// The JSON is logged in the data field (may be escaped)
-	if !strings.Contains(result, "assistant") || !strings.Contains(result, "type") {
-		t.Errorf("Verbose output should contain raw JSON data, got: %s", result)
+	if !strings.Contains(result, "Session started") {
+		t.Errorf("Verbose output should contain session started, got: %s", result)
 	}
 }
 
@@ -190,7 +187,7 @@ func TestFormat_InvalidJSON(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false) // verbose mode to see error
+	f := New(&output, true, false, "") // verbose mode to see error
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -199,9 +196,10 @@ func TestFormat_InvalidJSON(t *testing.T) {
 
 	result := output.String()
 
-	// In verbose mode, should see error message
-	if !strings.Contains(result, "DEBU") {
-		t.Errorf("Verbose output should contain debug info about invalid JSON, got: %s", result)
+	// Invalid JSON is skipped, debug output goes to stderr
+	// Just verify the output is empty (no crashes)
+	if result != "" {
+		t.Errorf("Invalid JSON should be skipped, output should be empty, got: %s", result)
 	}
 }
 
@@ -213,7 +211,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -230,7 +228,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 func TestPrintUsage(t *testing.T) {
 	var output bytes.Buffer
 
-	f := New(&output, false, true)
+	f := New(&output, false, true, "")
 
 	usage := &Usage{
 		InputTokens:              100,
@@ -271,7 +269,7 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -280,18 +278,19 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain session initialized message
-	if !strings.Contains(result, "Session initialized") {
-		t.Errorf("Output should contain 'Session initialized', got: %s", result)
+	// Should contain session started message
+	if !strings.Contains(result, "Session started") {
+		t.Errorf("Output should contain 'Session started', got: %s", result)
 	}
 }
 
 func TestFormat_ToolCall(t *testing.T) {
+	// Tool calls are registered but not printed until result arrives
 	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"Glob","input":{"pattern":"**/*.md"}}]}}`
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -300,17 +299,9 @@ func TestFormat_ToolCall(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain tool call information
-	if !strings.Contains(result, "Tool call") {
-		t.Errorf("Output should contain 'Tool call', got: %s", result)
-	}
-
-	if !strings.Contains(result, "Glob") {
-		t.Errorf("Output should contain tool name 'Glob', got: %s", result)
-	}
-
-	if !strings.Contains(result, "pattern=**/*.md") {
-		t.Errorf("Output should contain tool input, got: %s", result)
+	// No output until tool result arrives
+	if result != "" {
+		t.Errorf("Output should be empty until tool result, got: %s", result)
 	}
 }
 
@@ -320,7 +311,7 @@ func TestFormat_ToolResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -329,17 +320,13 @@ func TestFormat_ToolResult(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain tool call and result
-	if !strings.Contains(result, "Tool call") {
-		t.Errorf("Output should contain 'Tool call', got: %s", result)
-	}
-
-	if !strings.Contains(result, "Tool result") {
-		t.Errorf("Output should contain 'Tool result', got: %s", result)
-	}
-
+	// Should contain tool operation with target filename
 	if !strings.Contains(result, "Read") {
-		t.Errorf("Output should contain tool name, got: %s", result)
+		t.Errorf("Output should contain 'Read', got: %s", result)
+	}
+
+	if !strings.Contains(result, "test.go") {
+		t.Errorf("Output should contain target filename 'test.go', got: %s", result)
 	}
 }
 
@@ -356,7 +343,7 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false)
+	f := New(&output, false, false, "")
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -365,16 +352,14 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	result := output.String()
 
-	// Check for all expected elements
+	// Check for all expected elements in new format
 	expectedStrings := []string{
-		"Session initialized",
-		"Tool call",
+		"Session started",
 		"Glob",
 		"Read",
-		"Tool result",
 		"I'll search for markdown files",
 		"Found 3 markdown files",
-		"Execution completed",
+		"Completed in",
 	}
 
 	for _, expected := range expectedStrings {
@@ -384,37 +369,3 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 	}
 }
 
-func TestFormatToolInput_LongValue(t *testing.T) {
-	f := New(&bytes.Buffer{}, false, false)
-
-	input := map[string]interface{}{
-		"pattern": "this is a very long pattern that should be truncated to avoid cluttering the output with too much detail",
-	}
-
-	result := f.formatToolInput(input)
-
-	// Should truncate long values
-	if len(result) > 100 {
-		t.Errorf("formatToolInput should truncate long values, got length: %d", len(result))
-	}
-
-	if !strings.Contains(result, "...") {
-		t.Errorf("formatToolInput should show truncation with '...', got: %s", result)
-	}
-}
-
-func TestFormatToolResult_Truncation(t *testing.T) {
-	f := New(&bytes.Buffer{}, false, false)
-
-	longResult := strings.Repeat("a", 200)
-	result := f.formatToolResult(longResult)
-
-	// Should truncate long results
-	if len(result) > 100 {
-		t.Errorf("formatToolResult should truncate long results, got length: %d", len(result))
-	}
-
-	if !strings.Contains(result, "...") {
-		t.Errorf("formatToolResult should show truncation with '...', got: %s", result)
-	}
-}
