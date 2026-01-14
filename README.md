@@ -1,6 +1,20 @@
+<div align="center">
+
+<img src="screenshot.png" alt="Skillet" width="600">
+
 # Skillet
 
-Skillet runs [Agent SKILL.md](https://agentskills.io) files as shell commands with the help of Claude Code.
+### Run [Agent SKILL.md](https://agentskills.io) files as shell commands with Claude Code
+
+[![Release](https://img.shields.io/github/v/release/martinemde/skillet)](https://github.com/martinemde/skillet/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/martinemde/skillet)](https://go.dev/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/martinemde/skillet)](https://goreportcard.com/report/github.com/martinemde/skillet)
+[![License](https://img.shields.io/github/license/martinemde/skillet)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/martinemde/skillet/test.yml?branch=main)](https://github.com/martinemde/skillet/actions)
+
+</div>
+
+---
 
 ## Installation
 
