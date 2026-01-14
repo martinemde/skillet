@@ -153,16 +153,15 @@ func (f *Formatter) Format(input io.Reader) error {
 
 		var msg Message
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			// Show nicely formatted error message
+			fmt.Fprintln(f.output, errorIcon.String()+" Agent returned invalid json")
+
+			// In verbose mode, show the error details
 			if f.verbose {
-				fmt.Fprintf(os.Stderr, "DEBU Failed to parse JSON: %v\n", err)
-				fmt.Fprintf(os.Stderr, "DEBU stream data=%s\n", line)
+				fmt.Fprintf(os.Stderr, "DEBUG Failed to parse JSON: %v\n", err)
+				fmt.Fprintf(os.Stderr, "DEBUG stream data=%s\n", line)
 			}
 			continue
-		}
-
-		// In verbose mode, print the raw JSON stream to stderr
-		if f.verbose {
-			fmt.Fprintf(os.Stderr, "DEBU stream data=%s\n", line)
 		}
 
 		switch msg.Type {
