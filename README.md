@@ -18,24 +18,37 @@
 
 ## Installation
 
-### Download pre-built binaries
-
-Download the latest release for your platform from the [releases page](https://github.com/martinemde/skillet/releases):
+### Homebrew (macOS/Linux)
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Darwin_arm64.tar.gz | tar xz
-# Linux (x86_64)
-curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Linux_x86_64.tar.gz | tar xz
-
-# Move to your PATH (ensure this is in path)
-mv skillet ~/.local/bin/
+brew install martinemde/tap/skillet
 ```
 
 ### Install with Go
 
 ```bash
 go install github.com/martinemde/skillet/cmd/skillet@latest
+```
+
+### Download pre-built binaries
+
+Download the latest release for your platform from the [releases page](https://github.com/martinemde/skillet/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Darwin_arm64.tar.gz | tar xz
+
+# macOS (Intel)
+curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Darwin_x86_64.tar.gz | tar xz
+
+# Linux (x86_64)
+curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Linux_x86_64.tar.gz | tar xz
+
+# Linux (ARM64)
+curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Linux_arm64.tar.gz | tar xz
+
+# Move to your PATH
+mv skillet ~/.local/bin/
 ```
 
 ### Build from source

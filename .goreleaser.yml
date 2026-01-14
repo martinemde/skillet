@@ -76,8 +76,26 @@ release:
 
     Install via:
     ```bash
-    # Download binary from release assets, or:
+    # Homebrew
+    brew install martinemde/tap/skillet
+
+    # Or download binary from release assets, or:
     go install github.com/martinemde/skillet/cmd/skillet@{{ .Tag }}
     ```
   footer: |
     **Full Changelog**: https://github.com/martinemde/skillet/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+brews:
+  - name: skillet
+    repository:
+      owner: martinemde
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: https://github.com/martinemde/skillet
+    description: Run Agent SKILL.md files as shell commands with Claude Code
+    license: MIT
+    install: |
+      bin.install "skillet"
+    test: |
+      system "#{bin}/skillet", "--version"
