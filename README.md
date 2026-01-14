@@ -10,7 +10,7 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/martinemde/skillet)](https://go.dev/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/martinemde/skillet)](https://goreportcard.com/report/github.com/martinemde/skillet)
 [![License](https://img.shields.io/github/license/martinemde/skillet)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/martinemde/skillet/test.yml?branch=main)](https://github.com/martinemde/skillet/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/martinemde/skillet/ci.yml?branch=main)](https://github.com/martinemde/skillet/actions)
 
 </div>
 
