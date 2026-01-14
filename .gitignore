@@ -35,3 +35,6 @@ go.work.sum
 skillet
 dist/
 build/
+
+# test-skill output
+greeting.txt
