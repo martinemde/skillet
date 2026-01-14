@@ -12,6 +12,7 @@ import (
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/parser"
+	"github.com/martinemde/skillet/internal/resolver"
 )
 
 const version = "0.1.0"
@@ -52,8 +53,26 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	skillPath := flags.Arg(0)
 
+	// Resolve the skill path (handles files, directories, .claude/skills shortcuts, and URLs)
+	result, err := resolver.Resolve(skillPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve skill: %w", err)
+	}
+
+	// Clean up temporary file if it was downloaded from a URL
+	if result.IsURL {
+		defer os.Remove(result.Path)
+	}
+
 	// Parse the SKILL.md file
-	skill, err := parser.Parse(skillPath)
+	var skill *parser.Skill
+	if result.BaseURL != "" {
+		// For URL-based skills, use the base URL as the base directory
+		skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
+	} else {
+		// For local files, use the default base directory (file's directory)
+		skill, err = parser.Parse(result.Path)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to parse skill file: %w", err)
 	}
@@ -130,12 +149,18 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, `skillet - Run SKILL.md files with Claude CLI
 
 Usage:
-  skillet [options] <path-to-SKILL.md>
+  skillet [options] <skill-path>
 
 Description:
   Skillet parses SKILL.md files and executes them using the Claude CLI.
   It reads the frontmatter configuration, interpolates variables, and
   invokes Claude with the appropriate arguments in headless mode.
+
+  The skill path can be:
+  - An exact file path (e.g., path/to/SKILL.md)
+  - A directory containing SKILL.md (e.g., path/to/skill)
+  - A skill name in .claude/skills/ (e.g., write-skill)
+  - A URL to a skill file (e.g., https://example.com/skill.md)
 
 Options:
   --help          Show this help message
@@ -146,17 +171,26 @@ Options:
   --prompt        Optional prompt to pass to Claude (default: uses skill description)
 
 Examples:
-  # Run a skill file
+  # Run a skill by exact path
   skillet path/to/SKILL.md
 
+  # Run a skill by directory (looks for SKILL.md inside)
+  skillet .claude/skills/write-skill
+
+  # Run a skill by name (looks in .claude/skills/<name>/SKILL.md)
+  skillet write-skill
+
+  # Run a skill from a URL
+  skillet https://raw.githubusercontent.com/user/repo/main/skill.md
+
   # Run with a custom prompt
-  skillet --prompt "Analyze this code" path/to/SKILL.md
+  skillet --prompt "Analyze this code" write-skill
 
   # Show what command would be executed
-  skillet --dry-run path/to/SKILL.md
+  skillet --dry-run write-skill
 
   # Show verbose output and usage statistics
-  skillet --verbose --usage path/to/SKILL.md
+  skillet --verbose --usage write-skill
 
 SKILL.md Format:
   A SKILL.md file must contain YAML frontmatter followed by markdown content:

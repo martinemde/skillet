@@ -32,6 +32,12 @@ type Skill struct {
 
 // Parse reads and parses a SKILL.md file
 func Parse(skillPath string) (*Skill, error) {
+	return ParseWithBaseDir(skillPath, "")
+}
+
+// ParseWithBaseDir reads and parses a SKILL.md file with an optional custom base directory
+// If baseDir is empty, it defaults to the directory containing the skill file
+func ParseWithBaseDir(skillPath string, baseDir string) (*Skill, error) {
 	// Resolve absolute path
 	absPath, err := filepath.Abs(skillPath)
 	if err != nil {
@@ -44,8 +50,10 @@ func Parse(skillPath string) (*Skill, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Get base directory
-	baseDir := filepath.Dir(absPath)
+	// Get base directory if not provided
+	if baseDir == "" {
+		baseDir = filepath.Dir(absPath)
+	}
 
 	// Parse frontmatter and content
 	skill, err := parseFrontmatter(string(data))

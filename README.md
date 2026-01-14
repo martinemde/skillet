@@ -31,29 +31,80 @@ go install ./cmd/skillet
 
 ## Usage
 
-### Basic usage
+Skillet supports multiple ways to specify a skill:
+
+### 1. Direct file path
+
+Run a skill by specifying the exact path to the SKILL.md file:
 
 ```bash
 skillet path/to/SKILL.md
 ```
 
-### With custom prompt
+### 2. Directory path
+
+Run a skill by specifying a directory containing a SKILL.md file:
 
 ```bash
-skillet --prompt "Analyze this code" path/to/SKILL.md
+skillet path/to/skill-directory
 ```
 
-### Dry run (show command without executing)
+This will automatically look for `path/to/skill-directory/SKILL.md`.
+
+### 3. Skill name shortcut
+
+If you're in a directory with a `.claude` folder, you can run skills by name:
 
 ```bash
-skillet --dry-run path/to/SKILL.md
+skillet write-skill
 ```
 
-### With verbose output and usage statistics
+This will look for `.claude/skills/write-skill/SKILL.md`. This is the recommended way to organize and run skills in projects that use Claude Code.
+
+### 4. Remote URL
+
+Run a skill directly from a URL:
 
 ```bash
-skillet --verbose --usage path/to/SKILL.md
+skillet https://raw.githubusercontent.com/user/repo/main/skills/SKILL.md
 ```
+
+**Requirements for URL-based skills:**
+- Must be accessible via HTTP/HTTPS
+- Content-Type must be text-based (not binary/octet-stream)
+- File size must be ≤25kB
+- Content must be valid text (not binary)
+
+### Additional Options
+
+#### With custom prompt
+
+```bash
+skillet --prompt "Analyze this code" write-skill
+```
+
+#### Dry run (show command without executing)
+
+```bash
+skillet --dry-run write-skill
+```
+
+#### With verbose output and usage statistics
+
+```bash
+skillet --verbose --usage write-skill
+```
+
+## Skill Resolution
+
+When you provide a skill path, skillet resolves it in the following order:
+
+1. **URL**: If the path is a valid HTTP/HTTPS URL, download and use it
+2. **Exact file path**: If the path points to an existing file, use it directly
+3. **Directory with SKILL.md**: If the path is a directory containing `SKILL.md`, use that file
+4. **Skill name shortcut**: If the path is a bare word (no `/` or `\`), look for `.claude/skills/<name>/SKILL.md`
+
+This precedence ensures that explicit paths always take priority over shortcuts, while still providing convenient access to project skills.
 
 ## Command-line Options
 
