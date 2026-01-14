@@ -47,8 +47,14 @@ func (e *Executor) Execute(ctx context.Context) error {
 func (e *Executor) buildArgs() []string {
 	args := []string{"-p"} // Print mode
 
+	// Add verbose flag (required for streaming to work properly in print mode)
+	args = append(args, "--verbose")
+
 	// Add output format
 	args = append(args, "--output-format", "stream-json")
+
+	// Add permission mode to allow edits (otherwise Claude can't execute tools)
+	args = append(args, "--permission-mode", "acceptEdits")
 
 	// Add model if specified
 	if e.skill.Model != "" && e.skill.Model != "inherit" {
