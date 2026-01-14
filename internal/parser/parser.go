@@ -14,16 +14,16 @@ import (
 // Skill represents a parsed SKILL.md file
 type Skill struct {
 	// Frontmatter fields
-	Name                    string            `yaml:"name"`
-	Description             string            `yaml:"description"`
-	License                 string            `yaml:"license,omitempty"`
-	Compatibility           string            `yaml:"compatibility,omitempty"`
-	Metadata                map[string]string `yaml:"metadata,omitempty"`
-	AllowedTools            string            `yaml:"allowed-tools,omitempty"`
-	Model                   string            `yaml:"model,omitempty"`
-	Version                 string            `yaml:"version,omitempty"`
-	DisableModelInvocation  bool              `yaml:"disable-model-invocation,omitempty"`
-	Mode                    bool              `yaml:"mode,omitempty"`
+	Name                   string            `yaml:"name"`
+	Description            string            `yaml:"description"`
+	License                string            `yaml:"license,omitempty"`
+	Compatibility          string            `yaml:"compatibility,omitempty"`
+	Metadata               map[string]string `yaml:"metadata,omitempty"`
+	AllowedTools           string            `yaml:"allowed-tools,omitempty"`
+	Model                  string            `yaml:"model,omitempty"`
+	Version                string            `yaml:"version,omitempty"`
+	DisableModelInvocation bool              `yaml:"disable-model-invocation,omitempty"`
+	Mode                   bool              `yaml:"mode,omitempty"`
 
 	// Parsed content
 	Content string

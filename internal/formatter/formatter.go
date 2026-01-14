@@ -32,12 +32,12 @@ type Content struct {
 
 // Usage represents token usage information
 type Usage struct {
-	InputTokens              int                      `json:"input_tokens"`
-	OutputTokens             int                      `json:"output_tokens"`
-	CacheReadInputTokens     int                      `json:"cache_read_input_tokens"`
-	CacheCreationInputTokens int                      `json:"cache_creation_input_tokens"`
-	CacheCreation            map[string]int           `json:"cache_creation,omitempty"`
-	ServerToolUse            map[string]int           `json:"server_tool_use,omitempty"`
+	InputTokens              int            `json:"input_tokens"`
+	OutputTokens             int            `json:"output_tokens"`
+	CacheReadInputTokens     int            `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int            `json:"cache_creation_input_tokens"`
+	CacheCreation            map[string]int `json:"cache_creation,omitempty"`
+	ServerToolUse            map[string]int `json:"server_tool_use,omitempty"`
 }
 
 // Formatter formats stream-json output from Claude CLI
