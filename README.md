@@ -48,7 +48,7 @@ skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 ```
 
 > [!WARNING]
-> **Remote skills are a security risk.** Skills downloaded from URLs can execute arbitrary commands and access your filesystem with full permissions. Even with size and content-type constraints, malicious skills can exfiltrate data, modify files, and compromise your system through prompt injection. Only use skills from sources you completely trust.
+> **Skills can be a security risk.** Skills can execute commands, exfiltrate data, modify files, and compromise your system. Only use skills from sources you completely trust.
 
 **Additional options:**
 - `--prompt "text"` - Custom prompt instead of skill description
