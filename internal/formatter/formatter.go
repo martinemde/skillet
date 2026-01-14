@@ -84,6 +84,14 @@ var (
 			MarginLeft(2)
 )
 
+// Config holds configuration options for the Formatter
+type Config struct {
+	Output          io.Writer
+	Verbose         bool
+	ShowUsage       bool
+	PassthroughMode bool // If true, stream output directly without parsing
+}
+
 // Formatter formats stream-json output from Claude CLI
 type Formatter struct {
 	output          io.Writer
@@ -97,13 +105,13 @@ type Formatter struct {
 	printedToolsHdr bool           // Track if we've printed "Tools:" header
 }
 
-// New creates a new Formatter
-func New(output io.Writer, verbose, showUsage, passthroughMode bool) *Formatter {
+// New creates a new Formatter with the given configuration
+func New(cfg Config) *Formatter {
 	return &Formatter{
-		output:          output,
-		verbose:         verbose,
-		showUsage:       showUsage,
-		passthroughMode: passthroughMode,
+		output:          cfg.Output,
+		verbose:         cfg.Verbose,
+		showUsage:       cfg.ShowUsage,
+		passthroughMode: cfg.PassthroughMode,
 		toolCount:       0,
 		tools:           make([]ToolOperation, 0),
 		startTime:       time.Now(),
