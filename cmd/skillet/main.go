@@ -29,12 +29,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 
 	var (
-		showVersion = flags.Bool("version", false, "Show version information")
-		showHelp    = flags.Bool("help", false, "Show help information")
-		verbose     = flags.Bool("verbose", false, "Show verbose output including raw JSON")
-		showUsage   = flags.Bool("usage", false, "Show token usage statistics")
-		dryRun      = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
-		prompt      = flags.String("prompt", "", "Optional prompt to pass to Claude (if not provided, uses skill description)")
+		showVersion    = flags.Bool("version", false, "Show version information")
+		showHelp       = flags.Bool("help", false, "Show help information")
+		verbose        = flags.Bool("verbose", false, "Show verbose output including raw JSON")
+		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
+		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
+		prompt         = flags.String("prompt", "", "Optional prompt to pass to Claude (if not provided, uses skill description)")
+		model          = flags.String("model", "", "Override model to use (overrides SKILL.md setting)")
+		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
+		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
+		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
 	)
 
 	if err := flags.Parse(args[1:]); err != nil {
@@ -79,8 +83,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to parse skill file: %w", err)
 	}
 
-	// Create executor
+	// Create executor with CLI overrides
 	exec := executor.New(skill, *prompt)
+	exec.SetOverrides(*model, *allowedTools, *permissionMode, *outputFormat)
 
 	// If dry-run, just print the command and exit
 	if *dryRun {
@@ -165,12 +170,16 @@ Description:
   - A URL to a skill file (e.g., https://example.com/skill.md)
 
 Options:
-  --help          Show this help message
-  --version       Show version information
-  --verbose       Show verbose output including raw JSON stream
-  --usage         Show token usage statistics after execution
-  --dry-run       Show the command that would be executed without running it
-  --prompt        Optional prompt to pass to Claude (default: uses skill description)
+  --help              Show this help message
+  --version           Show version information
+  --verbose           Show verbose output including raw JSON stream
+  --usage             Show token usage statistics after execution
+  --dry-run           Show the command that would be executed without running it
+  --prompt            Optional prompt to pass to Claude (default: uses skill description)
+  --model             Override model to use (overrides SKILL.md setting)
+  --allowed-tools     Override allowed tools (overrides SKILL.md setting)
+  --permission-mode   Override permission mode (default: acceptEdits)
+  --output-format     Override output format (default: stream-json)
 
 Examples:
   # Run a skill by exact path

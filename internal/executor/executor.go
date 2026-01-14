@@ -16,6 +16,11 @@ type Executor struct {
 	prompt string
 	stdout io.Writer
 	stderr io.Writer
+	// CLI overrides (empty string means use default/SKILL.md value)
+	modelOverride          string
+	allowedToolsOverride   string
+	permissionModeOverride string
+	outputFormatOverride   string
 }
 
 // New creates a new Executor for the given skill
@@ -30,6 +35,14 @@ func New(skill *parser.Skill, prompt string) *Executor {
 func (e *Executor) SetOutput(stdout, stderr io.Writer) {
 	e.stdout = stdout
 	e.stderr = stderr
+}
+
+// SetOverrides sets CLI flag overrides that take precedence over SKILL.md settings
+func (e *Executor) SetOverrides(model, allowedTools, permissionMode, outputFormat string) {
+	e.modelOverride = model
+	e.allowedToolsOverride = allowedTools
+	e.permissionModeOverride = permissionMode
+	e.outputFormatOverride = outputFormat
 }
 
 // Execute runs the Claude CLI with the skill configuration
@@ -50,19 +63,31 @@ func (e *Executor) buildArgs() []string {
 	// Add verbose flag (required for streaming to work properly in print mode)
 	args = append(args, "--verbose")
 
-	// Add output format
-	args = append(args, "--output-format", "stream-json")
+	// Add output format (CLI override > default)
+	outputFormat := "stream-json"
+	if e.outputFormatOverride != "" {
+		outputFormat = e.outputFormatOverride
+	}
+	args = append(args, "--output-format", outputFormat)
 
-	// Add permission mode to allow edits (otherwise Claude can't execute tools)
-	args = append(args, "--permission-mode", "acceptEdits")
+	// Add permission mode (CLI override > default)
+	permissionMode := "acceptEdits"
+	if e.permissionModeOverride != "" {
+		permissionMode = e.permissionModeOverride
+	}
+	args = append(args, "--permission-mode", permissionMode)
 
-	// Add model if specified
-	if e.skill.Model != "" && e.skill.Model != "inherit" {
+	// Add model if specified (CLI override > SKILL.md > no model)
+	if e.modelOverride != "" {
+		args = append(args, "--model", e.modelOverride)
+	} else if e.skill.Model != "" && e.skill.Model != "inherit" {
 		args = append(args, "--model", e.skill.Model)
 	}
 
-	// Add allowed tools if specified
-	if e.skill.AllowedTools != "" {
+	// Add allowed tools if specified (CLI override > SKILL.md > no tools)
+	if e.allowedToolsOverride != "" {
+		args = append(args, "--allowed-tools", e.allowedToolsOverride)
+	} else if e.skill.AllowedTools != "" {
 		args = append(args, "--allowed-tools", e.skill.AllowedTools)
 	}
 
