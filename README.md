@@ -4,16 +4,39 @@ Skillet runs [Agent SKILL.md](https://agentskills.io) files as shell commands wi
 
 ## Installation
 
+### Download pre-built binaries
+
+Download the latest release for your platform from the [releases page](https://github.com/martinemde/skillet/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Darwin_arm64.tar.gz | tar xz
+
+# macOS (Intel)
+curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Darwin_x86_64.tar.gz | tar xz
+
+# Linux (ARM64)
+curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Linux_arm64.tar.gz | tar xz
+
+# Linux (x86_64)
+curl -L https://github.com/martinemde/skillet/releases/download/v0.1.0/skillet_Linux_x86_64.tar.gz | tar xz
+
+# Move to your PATH
+mv skillet /usr/local/bin/
+```
+
+### Install with Go
+
+```bash
+go install github.com/martinemde/skillet/cmd/skillet@latest
+```
+
 ### Build from source
 
 ```bash
+git clone https://github.com/martinemde/skillet.git
+cd skillet
 go build -o skillet ./cmd/skillet
-```
-
-### Install globally
-
-```bash
-go install ./cmd/skillet
 ```
 
 ## Usage
