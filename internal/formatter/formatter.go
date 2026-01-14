@@ -90,7 +90,8 @@ type Config struct {
 	Output          io.Writer
 	Verbose         bool
 	ShowUsage       bool
-	PassthroughMode bool // If true, stream output directly without parsing
+	PassthroughMode bool   // If true, stream output directly without parsing
+	SkillName       string // Name of the skill being executed
 }
 
 // Formatter formats stream-json output from Claude CLI
@@ -98,7 +99,8 @@ type Formatter struct {
 	output          io.Writer
 	verbose         bool
 	showUsage       bool
-	passthroughMode bool // If true, stream output directly without parsing
+	passthroughMode bool   // If true, stream output directly without parsing
+	skillName       string // Name of the skill being executed
 	toolCount       int
 	tools           []ToolOperation
 	startTime       time.Time
@@ -125,6 +127,7 @@ func New(cfg Config) *Formatter {
 		verbose:         cfg.Verbose,
 		showUsage:       cfg.ShowUsage,
 		passthroughMode: cfg.PassthroughMode,
+		skillName:       cfg.SkillName,
 		toolCount:       0,
 		tools:           make([]ToolOperation, 0),
 		startTime:       time.Now(),
@@ -165,7 +168,7 @@ func (f *Formatter) Format(input io.Reader) error {
 		switch msg.Type {
 		case "system":
 			if msg.Subtype == "init" {
-				fmt.Fprintln(f.output, successIcon.String()+" Session started")
+				fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
 			}
 
 		case "assistant":
