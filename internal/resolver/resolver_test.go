@@ -96,6 +96,109 @@ func TestResolve_BareWord(t *testing.T) {
 	}
 }
 
+func TestResolve_BareWord_HomeDirectory(t *testing.T) {
+	// Get home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("could not get home directory")
+	}
+
+	// Create $HOME/.claude/skills/<name>/SKILL.md structure
+	homeClaudeDir := filepath.Join(homeDir, ".claude", "skills", "home-test-skill")
+	if err := os.MkdirAll(homeClaudeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.RemoveAll(filepath.Join(homeDir, ".claude", "skills", "home-test-skill"))
+	}()
+
+	skillFile := filepath.Join(homeClaudeDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("test content from home"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Resolve("home-test-skill")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.IsURL {
+		t.Error("expected IsURL to be false")
+	}
+
+	if !strings.Contains(result.Path, ".claude") {
+		t.Errorf("expected path to contain .claude, got %s", result.Path)
+	}
+
+	if !strings.HasSuffix(result.Path, "SKILL.md") {
+		t.Errorf("expected path to end with SKILL.md, got %s", result.Path)
+	}
+
+	// Verify content matches what we wrote
+	content, err := os.ReadFile(result.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(content), "test content from home") {
+		t.Errorf("expected content from home directory, got: %s", content)
+	}
+}
+
+func TestResolve_BareWord_PrioritizesWorkingDirectory(t *testing.T) {
+	// Create both ./.claude/skills and $HOME/.claude/skills with same skill name
+	// Working directory version should take priority
+
+	// Get home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("could not get home directory")
+	}
+
+	// Create working directory version
+	workingClaudeDir := filepath.Join(".", ".claude", "skills", "priority-test")
+	if err := os.MkdirAll(workingClaudeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.RemoveAll(".claude")
+	}()
+
+	workingSkillFile := filepath.Join(workingClaudeDir, "SKILL.md")
+	if err := os.WriteFile(workingSkillFile, []byte("working directory version"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create home directory version
+	homeClaudeDir := filepath.Join(homeDir, ".claude", "skills", "priority-test")
+	if err := os.MkdirAll(homeClaudeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.RemoveAll(filepath.Join(homeDir, ".claude", "skills", "priority-test"))
+	}()
+
+	homeSkillFile := filepath.Join(homeClaudeDir, "SKILL.md")
+	if err := os.WriteFile(homeSkillFile, []byte("home directory version"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Resolve("priority-test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify we got the working directory version
+	content, err := os.ReadFile(result.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(content), "working directory version") {
+		t.Errorf("expected working directory version, got: %s", content)
+	}
+}
+
 func TestResolve_BareWordNotFound(t *testing.T) {
 	_, err := Resolve("nonexistent-skill")
 	if err == nil {

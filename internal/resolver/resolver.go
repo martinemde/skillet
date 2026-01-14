@@ -27,7 +27,7 @@ type ResolveResult struct {
 // 1. If URL: download and validate
 // 2. If exact file path exists: use it
 // 3. If directory with SKILL.md exists: use it
-// 4. If bare word: look in .claude/skills/<name>/SKILL.md
+// 4. If bare word: look in .claude/skills/<name>/SKILL.md, then $HOME/.claude/skills/<name>/SKILL.md
 func Resolve(path string) (*ResolveResult, error) {
 	// Check if it's a URL
 	if isURL(path) {
@@ -57,7 +57,7 @@ func Resolve(path string) (*ResolveResult, error) {
 
 	// Check if it's a bare word (no path separators)
 	if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
-		// Try .claude/skills/<name>/SKILL.md
+		// Try .claude/skills/<name>/SKILL.md in working directory
 		claudeSkillPath := filepath.Join(".claude", "skills", path, skillFileName)
 		if _, err := os.Stat(claudeSkillPath); err == nil {
 			absPath, err := filepath.Abs(claudeSkillPath)
@@ -66,9 +66,22 @@ func Resolve(path string) (*ResolveResult, error) {
 			}
 			return &ResolveResult{Path: absPath}, nil
 		}
+
+		// Try $HOME/.claude/skills/<name>/SKILL.md
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			homeSkillPath := filepath.Join(homeDir, ".claude", "skills", path, skillFileName)
+			if _, err := os.Stat(homeSkillPath); err == nil {
+				absPath, err := filepath.Abs(homeSkillPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get absolute path: %w", err)
+				}
+				return &ResolveResult{Path: absPath}, nil
+			}
+		}
 	}
 
-	return nil, fmt.Errorf("skill not found: %s (tried exact path, directory with SKILL.md, and .claude/skills/<name>/SKILL.md)", path)
+	return nil, fmt.Errorf("skill not found: %s (tried exact path, directory with SKILL.md, .claude/skills/<name>/SKILL.md, and $HOME/.claude/skills/<name>/SKILL.md)", path)
 }
 
 // isURL checks if a string is a valid HTTP(S) URL
