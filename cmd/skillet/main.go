@@ -42,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *showVersion {
-		fmt.Fprintf(stdout, "skillet version %s\n", version)
+		_, _ = fmt.Fprintf(stdout, "skillet version %s\n", version)
 		return nil
 	}
 
@@ -61,7 +61,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Clean up temporary file if it was downloaded from a URL
 	if result.IsURL {
-		defer os.Remove(result.Path)
+		defer func() {
+			_ = os.Remove(result.Path)
+		}()
 	}
 
 	// Parse the SKILL.md file
@@ -82,7 +84,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// If dry-run, just print the command and exit
 	if *dryRun {
-		fmt.Fprintf(stdout, "Would execute:\n%s\n", exec.GetCommand())
+		_, _ = fmt.Fprintf(stdout, "Would execute:\n%s\n", exec.GetCommand())
 		return nil
 	}
 
@@ -118,7 +120,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Run executor
 	go func() {
 		err := exec.Execute(ctx)
-		pw.Close() // Close the writer when execution is done
+		_ = pw.Close() // Close the writer when execution is done
 		errChan <- err
 	}()
 
@@ -146,7 +148,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 func printHelp(w io.Writer) {
-	fmt.Fprintf(w, `skillet - Run SKILL.md files with Claude CLI
+	_, _ = fmt.Fprintf(w, `skillet - Run SKILL.md files with Claude CLI
 
 Usage:
   skillet [options] <skill-path>

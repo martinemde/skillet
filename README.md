@@ -33,78 +33,36 @@ go install ./cmd/skillet
 
 Skillet supports multiple ways to specify a skill:
 
-### 1. Direct file path
-
-Run a skill by specifying the exact path to the SKILL.md file:
-
 ```bash
+# Direct file path
 skillet path/to/SKILL.md
-```
 
-### 2. Directory path
-
-Run a skill by specifying a directory containing a SKILL.md file:
-
-```bash
+# Directory (automatically finds SKILL.md inside)
 skillet path/to/skill-directory
-```
 
-This will automatically look for `path/to/skill-directory/SKILL.md`.
-
-### 3. Skill name shortcut
-
-If you're in a directory with a `.claude` folder, you can run skills by name:
-
-```bash
+# Skill name shortcut (looks in .claude/skills/<name>/SKILL.md)
 skillet write-skill
+
+# Remote URL
+skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 ```
 
-This will look for `.claude/skills/write-skill/SKILL.md`. This is the recommended way to organize and run skills in projects that use Claude Code.
+> [!WARNING]
+> **Remote skills are a security risk.** Skills downloaded from URLs can execute arbitrary commands and access your filesystem with full permissions. Even with size and content-type constraints, malicious skills can exfiltrate data, modify files, and compromise your system through prompt injection. Only use skills from sources you completely trust.
 
-### 4. Remote URL
-
-Run a skill directly from a URL:
-
-```bash
-skillet https://raw.githubusercontent.com/user/repo/main/skills/SKILL.md
-```
-
-**Requirements for URL-based skills:**
-- Must be accessible via HTTP/HTTPS
-- Content-Type must be text-based (not binary/octet-stream)
-- File size must be ≤25kB
-- Content must be valid text (not binary)
-
-### Additional Options
-
-#### With custom prompt
-
-```bash
-skillet --prompt "Analyze this code" write-skill
-```
-
-#### Dry run (show command without executing)
-
-```bash
-skillet --dry-run write-skill
-```
-
-#### With verbose output and usage statistics
-
-```bash
-skillet --verbose --usage write-skill
-```
+**Additional options:**
+- `--prompt "text"` - Custom prompt instead of skill description
+- `--dry-run` - Show command without executing
+- `--verbose` - Show raw JSON stream
+- `--usage` - Show token usage statistics
 
 ## Skill Resolution
 
-When you provide a skill path, skillet resolves it in the following order:
-
-1. **URL**: If the path is a valid HTTP/HTTPS URL, download and use it
-2. **Exact file path**: If the path points to an existing file, use it directly
-3. **Directory with SKILL.md**: If the path is a directory containing `SKILL.md`, use that file
-4. **Skill name shortcut**: If the path is a bare word (no `/` or `\`), look for `.claude/skills/<name>/SKILL.md`
-
-This precedence ensures that explicit paths always take priority over shortcuts, while still providing convenient access to project skills.
+Skillet resolves skill paths in this order:
+1. **URL** - Valid HTTP/HTTPS URL → download and validate
+2. **Exact file path** - File exists → use directly
+3. **Directory** - Directory with SKILL.md → use that file
+4. **Skill name** - Bare word → look in `.claude/skills/<name>/SKILL.md`
 
 ## Command-line Options
 

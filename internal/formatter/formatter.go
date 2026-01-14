@@ -70,7 +70,7 @@ func (f *Formatter) Format(input io.Reader) error {
 		var msg Message
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			if f.verbose {
-				fmt.Fprintf(f.output, "[ERROR] Failed to parse JSON: %v\n", err)
+				_, _ = fmt.Fprintf(f.output, "[ERROR] Failed to parse JSON: %v\n", err)
 			}
 			continue
 		}
@@ -88,13 +88,13 @@ func (f *Formatter) Format(input io.Reader) error {
 		case "result":
 			// Print any accumulated text
 			if textBuilder.Len() > 0 {
-				fmt.Fprint(f.output, textBuilder.String())
+				_, _ = fmt.Fprint(f.output, textBuilder.String())
 				textBuilder.Reset()
 			}
 
 			// Print result if it's different from accumulated text
 			if msg.Result != "" {
-				fmt.Fprintln(f.output, msg.Result)
+				_, _ = fmt.Fprintln(f.output, msg.Result)
 			}
 
 			// Print usage information if requested
@@ -104,19 +104,19 @@ func (f *Formatter) Format(input io.Reader) error {
 
 			// Print error information if present
 			if msg.IsError {
-				fmt.Fprintf(f.output, "\n[ERROR] Execution failed (subtype: %s)\n", msg.Subtype)
+				_, _ = fmt.Fprintf(f.output, "\n[ERROR] Execution failed (subtype: %s)\n", msg.Subtype)
 			}
 		}
 
 		// In verbose mode, print the raw JSON
 		if f.verbose {
-			fmt.Fprintf(f.output, "[DEBUG] %s\n", line)
+			_, _ = fmt.Fprintf(f.output, "[DEBUG] %s\n", line)
 		}
 	}
 
 	// Print any remaining text
 	if textBuilder.Len() > 0 {
-		fmt.Fprint(f.output, textBuilder.String())
+		_, _ = fmt.Fprint(f.output, textBuilder.String())
 	}
 
 	return scanner.Err()
@@ -124,22 +124,22 @@ func (f *Formatter) Format(input io.Reader) error {
 
 // printUsage prints token usage information
 func (f *Formatter) printUsage(usage *Usage) {
-	fmt.Fprintln(f.output, "\n--- Usage Statistics ---")
-	fmt.Fprintf(f.output, "Input tokens: %d\n", usage.InputTokens)
-	fmt.Fprintf(f.output, "Output tokens: %d\n", usage.OutputTokens)
+	_, _ = fmt.Fprintln(f.output, "\n--- Usage Statistics ---")
+	_, _ = fmt.Fprintf(f.output, "Input tokens: %d\n", usage.InputTokens)
+	_, _ = fmt.Fprintf(f.output, "Output tokens: %d\n", usage.OutputTokens)
 
 	if usage.CacheReadInputTokens > 0 {
-		fmt.Fprintf(f.output, "Cache read tokens: %d\n", usage.CacheReadInputTokens)
+		_, _ = fmt.Fprintf(f.output, "Cache read tokens: %d\n", usage.CacheReadInputTokens)
 	}
 
 	if usage.CacheCreationInputTokens > 0 {
-		fmt.Fprintf(f.output, "Cache creation tokens: %d\n", usage.CacheCreationInputTokens)
+		_, _ = fmt.Fprintf(f.output, "Cache creation tokens: %d\n", usage.CacheCreationInputTokens)
 	}
 
 	if usage.CacheCreation != nil {
 		for k, v := range usage.CacheCreation {
 			if v > 0 {
-				fmt.Fprintf(f.output, "Cache creation (%s): %d\n", k, v)
+				_, _ = fmt.Fprintf(f.output, "Cache creation (%s): %d\n", k, v)
 			}
 		}
 	}
@@ -147,10 +147,10 @@ func (f *Formatter) printUsage(usage *Usage) {
 	if usage.ServerToolUse != nil {
 		for k, v := range usage.ServerToolUse {
 			if v > 0 {
-				fmt.Fprintf(f.output, "Server tool use (%s): %d\n", k, v)
+				_, _ = fmt.Fprintf(f.output, "Server tool use (%s): %d\n", k, v)
 			}
 		}
 	}
 
-	fmt.Fprintln(f.output, "------------------------")
+	_, _ = fmt.Fprintln(f.output, "------------------------")
 }

@@ -94,7 +94,9 @@ func resolveURL(urlStr string) (*ResolveResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to download URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to download URL: HTTP %d", resp.StatusCode)
@@ -129,13 +131,13 @@ func resolveURL(urlStr string) (*ResolveResult, error) {
 	}
 
 	if _, err := tmpFile.Write(content); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
 		return nil, fmt.Errorf("failed to write temporary file: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpFile.Name())
+		_ = os.Remove(tmpFile.Name())
 		return nil, fmt.Errorf("failed to close temporary file: %w", err)
 	}
 

@@ -69,7 +69,9 @@ func TestResolve_BareWord(t *testing.T) {
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(".claude")
+	defer func() {
+		_ = os.RemoveAll(".claude")
+	}()
 
 	skillFile := filepath.Join(claudeDir, "SKILL.md")
 	if err := os.WriteFile(skillFile, []byte("test content"), 0644); err != nil {
@@ -109,7 +111,7 @@ func TestResolve_URL_Success(t *testing.T) {
 	// Create a test HTTP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("---\nname: test\ndescription: test skill\n---\nTest content"))
+		_, _ = w.Write([]byte("---\nname: test\ndescription: test skill\n---\nTest content"))
 	}))
 	defer server.Close()
 
@@ -117,7 +119,9 @@ func TestResolve_URL_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer os.Remove(result.Path)
+	defer func() {
+		_ = os.Remove(result.Path)
+	}()
 
 	if !result.IsURL {
 		t.Error("expected IsURL to be true")
@@ -144,7 +148,7 @@ func TestResolve_URL_TooLarge(t *testing.T) {
 		w.Header().Set("Content-Type", "text/plain")
 		// Write more than 25kB
 		largeContent := strings.Repeat("a", 26*1024)
-		w.Write([]byte(largeContent))
+		_, _ = w.Write([]byte(largeContent))
 	}))
 	defer server.Close()
 
@@ -164,7 +168,7 @@ func TestResolve_URL_BinaryContent(t *testing.T) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		// Write binary content (with null bytes)
 		binaryContent := []byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE}
-		w.Write(binaryContent)
+		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
