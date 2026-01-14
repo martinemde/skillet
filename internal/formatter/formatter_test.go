@@ -8,7 +8,12 @@ import (
 
 func TestNew(t *testing.T) {
 	var buf bytes.Buffer
-	f := New(&buf, false, false, false)
+	f := New(Config{
+		Output:          &buf,
+		Verbose:         false,
+		ShowUsage:       false,
+		PassthroughMode: false,
+	})
 
 	if f.output != &buf {
 		t.Error("Formatter should store the output writer")
@@ -29,7 +34,7 @@ func TestFormat_AssistantMessage(t *testing.T) {
 {"type":"result","result":"Hello, world!","is_error":false}`
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -49,7 +54,7 @@ func TestFormat_ResultMessage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -69,7 +74,7 @@ func TestFormat_MultipleMessages(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -87,7 +92,7 @@ func TestFormat_WithUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, true, false) // showUsage = true
+	f := New(Config{Output: &output, ShowUsage: true}) // showUsage = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -117,7 +122,7 @@ func TestFormat_WithoutUsage(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false) // showUsage = false
+	f := New(Config{Output: &output}) // showUsage = false
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -142,7 +147,7 @@ func TestFormat_ErrorResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -163,7 +168,7 @@ func TestFormat_VerboseMode(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false, false) // verbose = true
+	f := New(Config{Output: &output, Verbose: true}) // verbose = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -187,7 +192,7 @@ func TestFormat_InvalidJSON(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, true, false, false) // verbose mode to see error
+	f := New(Config{Output: &output, Verbose: true}) // verbose mode to see error
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -211,7 +216,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -228,7 +233,7 @@ func TestFormat_EmptyLines(t *testing.T) {
 func TestPrintUsage(t *testing.T) {
 	var output bytes.Buffer
 
-	f := New(&output, false, true, false)
+	f := New(Config{Output: &output, ShowUsage: true})
 
 	usage := &Usage{
 		InputTokens:              100,
@@ -269,7 +274,7 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -290,7 +295,7 @@ func TestFormat_ToolCall(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -311,7 +316,7 @@ func TestFormat_ToolResult(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -343,7 +348,7 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(&output, false, false, false)
+	f := New(Config{Output: &output})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -378,7 +383,7 @@ func TestFormat_PassthroughMode(t *testing.T) {
 	var output bytes.Buffer
 
 	// passthroughMode = true simulates user explicitly setting --output-format
-	f := New(&output, false, false, true)
+	f := New(Config{Output: &output, PassthroughMode: true})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -408,7 +413,7 @@ func TestFormat_VerboseWithoutPassthrough(t *testing.T) {
 	var output bytes.Buffer
 
 	// verbose = true, passthroughMode = false
-	f := New(&output, true, false, false)
+	f := New(Config{Output: &output, Verbose: true})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {

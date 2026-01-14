@@ -154,8 +154,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Create formatter
 	// If user explicitly set --output-format, we're in passthrough mode
-	passthroughMode := *outputFormat != ""
-	form := formatter.New(stdout, *verbose, *showUsage, passthroughMode)
+	form := formatter.New(formatter.Config{
+		Output:          stdout,
+		Verbose:         *verbose,
+		ShowUsage:       *showUsage,
+		PassthroughMode: *outputFormat != "",
+	})
 
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
