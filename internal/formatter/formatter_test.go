@@ -168,7 +168,7 @@ func TestFormat_VerboseMode(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(Config{Output: &output, Verbose: true}) // verbose = true
+	f := New(Config{Output: &output, Verbose: true, SkillName: "test-skill"}) // verbose = true
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -182,8 +182,8 @@ func TestFormat_VerboseMode(t *testing.T) {
 	if !strings.Contains(result, "Test message") {
 		t.Errorf("Verbose output should contain result message, got: %s", result)
 	}
-	if !strings.Contains(result, "Session started") {
-		t.Errorf("Verbose output should contain session started, got: %s", result)
+	if !strings.Contains(result, "Starting test-skill") {
+		t.Errorf("Verbose output should contain starting message, got: %s", result)
 	}
 }
 
@@ -274,7 +274,7 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(Config{Output: &output})
+	f := New(Config{Output: &output, SkillName: "example-skill"})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -283,9 +283,9 @@ func TestFormat_SystemInit(t *testing.T) {
 
 	result := output.String()
 
-	// Should contain session started message
-	if !strings.Contains(result, "Session started") {
-		t.Errorf("Output should contain 'Session started', got: %s", result)
+	// Should contain starting message with skill name
+	if !strings.Contains(result, "Starting example-skill") {
+		t.Errorf("Output should contain 'Starting example-skill', got: %s", result)
 	}
 }
 
@@ -348,7 +348,7 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	var output bytes.Buffer
 
-	f := New(Config{Output: &output})
+	f := New(Config{Output: &output, SkillName: "workflow-skill"})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -359,7 +359,7 @@ func TestFormat_CompleteWorkflow(t *testing.T) {
 
 	// Check for all expected elements in new format
 	expectedStrings := []string{
-		"Session started",
+		"Starting workflow-skill",
 		"Glob",
 		"Read",
 		"I'll search for markdown files",
@@ -398,7 +398,7 @@ func TestFormat_PassthroughMode(t *testing.T) {
 	}
 
 	// Should NOT contain formatted output
-	if strings.Contains(result, "Session started") {
+	if strings.Contains(result, "Starting") {
 		t.Errorf("Passthrough mode should not format output, got: %s", result)
 	}
 }
@@ -413,7 +413,7 @@ func TestFormat_VerboseWithoutPassthrough(t *testing.T) {
 	var output bytes.Buffer
 
 	// verbose = true, passthroughMode = false
-	f := New(Config{Output: &output, Verbose: true})
+	f := New(Config{Output: &output, Verbose: true, SkillName: "verbose-skill"})
 	err := f.Format(strings.NewReader(input))
 
 	if err != nil {
@@ -423,7 +423,7 @@ func TestFormat_VerboseWithoutPassthrough(t *testing.T) {
 	result := output.String()
 
 	// Should contain formatted output with thinking (in verbose mode)
-	if !strings.Contains(result, "Session started") {
+	if !strings.Contains(result, "Starting verbose-skill") {
 		t.Errorf("Verbose mode should format output, got: %s", result)
 	}
 

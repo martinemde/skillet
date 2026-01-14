@@ -159,6 +159,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Verbose:         *verbose,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
+		SkillName:       skill.Name,
 	})
 
 	// Set up context with cancellation
