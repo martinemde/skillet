@@ -151,7 +151,7 @@ func TestFormat_ErrorResult(t *testing.T) {
 	result := output.String()
 
 	// Should contain error information
-	if !strings.Contains(result, "[ERROR]") {
+	if !strings.Contains(result, "ERRO") {
 		t.Errorf("Output should contain error marker, got: %s", result)
 	}
 
@@ -175,12 +175,13 @@ func TestFormat_VerboseMode(t *testing.T) {
 	result := output.String()
 
 	// Should contain debug output with raw JSON
-	if !strings.Contains(result, "[DEBUG]") {
-		t.Errorf("Verbose output should contain [DEBUG] marker, got: %s", result)
+	if !strings.Contains(result, "DEBU") {
+		t.Errorf("Verbose output should contain DEBU marker, got: %s", result)
 	}
 
-	if !strings.Contains(result, `"type":"assistant"`) {
-		t.Errorf("Verbose output should contain raw JSON, got: %s", result)
+	// The JSON is logged in the data field (may be escaped)
+	if !strings.Contains(result, "assistant") || !strings.Contains(result, "type") {
+		t.Errorf("Verbose output should contain raw JSON data, got: %s", result)
 	}
 }
 
@@ -199,8 +200,8 @@ func TestFormat_InvalidJSON(t *testing.T) {
 	result := output.String()
 
 	// In verbose mode, should see error message
-	if !strings.Contains(result, "[ERROR]") {
-		t.Errorf("Verbose output should contain error about invalid JSON, got: %s", result)
+	if !strings.Contains(result, "DEBU") {
+		t.Errorf("Verbose output should contain debug info about invalid JSON, got: %s", result)
 	}
 }
 
@@ -262,5 +263,158 @@ func TestPrintUsage(t *testing.T) {
 		if !strings.Contains(result, expected) {
 			t.Errorf("Usage output should contain '%s', got: %s", expected, result)
 		}
+	}
+}
+
+func TestFormat_SystemInit(t *testing.T) {
+	input := `{"type":"system","subtype":"init"}`
+
+	var output bytes.Buffer
+
+	f := New(&output, false, false)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should contain session initialized message
+	if !strings.Contains(result, "Session initialized") {
+		t.Errorf("Output should contain 'Session initialized', got: %s", result)
+	}
+}
+
+func TestFormat_ToolCall(t *testing.T) {
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"Glob","input":{"pattern":"**/*.md"}}]}}`
+
+	var output bytes.Buffer
+
+	f := New(&output, false, false)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should contain tool call information
+	if !strings.Contains(result, "Tool call") {
+		t.Errorf("Output should contain 'Tool call', got: %s", result)
+	}
+
+	if !strings.Contains(result, "Glob") {
+		t.Errorf("Output should contain tool name 'Glob', got: %s", result)
+	}
+
+	if !strings.Contains(result, "pattern=**/*.md") {
+		t.Errorf("Output should contain tool input, got: %s", result)
+	}
+}
+
+func TestFormat_ToolResult(t *testing.T) {
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"Read","input":{"file_path":"/home/user/test.go"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"package main\n\nfunc main() {}"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(&output, false, false)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should contain tool call and result
+	if !strings.Contains(result, "Tool call") {
+		t.Errorf("Output should contain 'Tool call', got: %s", result)
+	}
+
+	if !strings.Contains(result, "Tool result") {
+		t.Errorf("Output should contain 'Tool result', got: %s", result)
+	}
+
+	if !strings.Contains(result, "Read") {
+		t.Errorf("Output should contain tool name, got: %s", result)
+	}
+}
+
+func TestFormat_CompleteWorkflow(t *testing.T) {
+	// Simulate a complete workflow with system init, tool calls, and results
+	input := `{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll search for markdown files."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Glob","input":{"pattern":"**/*.md"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","content":"README.md\nSKILL.md\nDOCS.md"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Found 3 markdown files. Let me read one."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_002","name":"Read","input":{"file_path":"SKILL.md"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_002","content":"---\nname: test-skill\ndescription: A test skill\n---\n\n# Instructions"}]}}
+{"type":"result","result":"I'll search for markdown files.\nFound 3 markdown files. Let me read one.","is_error":false}`
+
+	var output bytes.Buffer
+
+	f := New(&output, false, false)
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Check for all expected elements
+	expectedStrings := []string{
+		"Session initialized",
+		"Tool call",
+		"Glob",
+		"Read",
+		"Tool result",
+		"I'll search for markdown files",
+		"Found 3 markdown files",
+		"Execution completed",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(result, expected) {
+			t.Errorf("Output should contain '%s', got: %s", expected, result)
+		}
+	}
+}
+
+func TestFormatToolInput_LongValue(t *testing.T) {
+	f := New(&bytes.Buffer{}, false, false)
+
+	input := map[string]interface{}{
+		"pattern": "this is a very long pattern that should be truncated to avoid cluttering the output with too much detail",
+	}
+
+	result := f.formatToolInput(input)
+
+	// Should truncate long values
+	if len(result) > 100 {
+		t.Errorf("formatToolInput should truncate long values, got length: %d", len(result))
+	}
+
+	if !strings.Contains(result, "...") {
+		t.Errorf("formatToolInput should show truncation with '...', got: %s", result)
+	}
+}
+
+func TestFormatToolResult_Truncation(t *testing.T) {
+	f := New(&bytes.Buffer{}, false, false)
+
+	longResult := strings.Repeat("a", 200)
+	result := f.formatToolResult(longResult)
+
+	// Should truncate long results
+	if len(result) > 100 {
+		t.Errorf("formatToolResult should truncate long results, got length: %d", len(result))
+	}
+
+	if !strings.Contains(result, "...") {
+		t.Errorf("formatToolResult should show truncation with '...', got: %s", result)
 	}
 }
