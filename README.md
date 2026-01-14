@@ -31,29 +31,38 @@ go install ./cmd/skillet
 
 ## Usage
 
-### Basic usage
+Skillet supports multiple ways to specify a skill:
 
 ```bash
+# Direct file path
 skillet path/to/SKILL.md
+
+# Directory (automatically finds SKILL.md inside)
+skillet path/to/skill-directory
+
+# Skill name shortcut (looks in .claude/skills/<name>/SKILL.md)
+skillet write-skill
+
+# Remote URL
+skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 ```
 
-### With custom prompt
+> [!WARNING]
+> **Remote skills are a security risk.** Skills downloaded from URLs can execute arbitrary commands and access your filesystem with full permissions. Even with size and content-type constraints, malicious skills can exfiltrate data, modify files, and compromise your system through prompt injection. Only use skills from sources you completely trust.
 
-```bash
-skillet --prompt "Analyze this code" path/to/SKILL.md
-```
+**Additional options:**
+- `--prompt "text"` - Custom prompt instead of skill description
+- `--dry-run` - Show command without executing
+- `--verbose` - Show raw JSON stream
+- `--usage` - Show token usage statistics
 
-### Dry run (show command without executing)
+## Skill Resolution
 
-```bash
-skillet --dry-run path/to/SKILL.md
-```
-
-### With verbose output and usage statistics
-
-```bash
-skillet --verbose --usage path/to/SKILL.md
-```
+Skillet resolves skill paths in this order:
+1. **URL** - Valid HTTP/HTTPS URL → download and validate
+2. **Exact file path** - File exists → use directly
+3. **Directory** - Directory with SKILL.md → use that file
+4. **Skill name** - Bare word → look in `.claude/skills/<name>/SKILL.md`
 
 ## Command-line Options
 

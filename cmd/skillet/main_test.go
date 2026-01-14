@@ -107,7 +107,7 @@ func TestRun_NonexistentFile(t *testing.T) {
 		t.Fatal("Expected error for nonexistent file, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "failed to parse skill file") {
-		t.Errorf("Expected parse error, got: %v", err)
+	if !strings.Contains(err.Error(), "failed to resolve skill") {
+		t.Errorf("Expected resolve error, got: %v", err)
 	}
 }
