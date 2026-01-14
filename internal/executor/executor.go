@@ -70,7 +70,7 @@ func (e *Executor) buildArgs() []string {
 	// We use --append-system-prompt to add the skill instructions
 	// while keeping Claude's default capabilities
 	systemPrompt := e.buildSystemPrompt()
-	args = append(args, "--system-prompt", systemPrompt)
+	args = append(args, "--append-system-prompt", systemPrompt)
 
 	// Add the user prompt (if any)
 	if e.prompt != "" {
