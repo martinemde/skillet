@@ -40,6 +40,18 @@ func TestBuildArgs_Basic(t *testing.T) {
 		t.Error("First arg should be '-p'")
 	}
 
+	// Check for verbose flag (required for streaming)
+	hasVerbose := false
+	for _, arg := range args {
+		if arg == "--verbose" {
+			hasVerbose = true
+			break
+		}
+	}
+	if !hasVerbose {
+		t.Error("Args should contain '--verbose'")
+	}
+
 	// Check for output format
 	hasOutputFormat := false
 	for i, arg := range args {
@@ -50,6 +62,18 @@ func TestBuildArgs_Basic(t *testing.T) {
 	}
 	if !hasOutputFormat {
 		t.Error("Args should contain '--output-format stream-json'")
+	}
+
+	// Check for permission mode
+	hasPermissionMode := false
+	for i, arg := range args {
+		if arg == "--permission-mode" && i+1 < len(args) && args[i+1] == "acceptEdits" {
+			hasPermissionMode = true
+			break
+		}
+	}
+	if !hasPermissionMode {
+		t.Error("Args should contain '--permission-mode acceptEdits'")
 	}
 
 	// Check for system prompt
@@ -228,8 +252,11 @@ func TestGetCommand(t *testing.T) {
 	// Check that it contains expected flags
 	expectedFlags := []string{
 		"-p",
+		"--verbose",
 		"--output-format",
 		"stream-json",
+		"--permission-mode",
+		"acceptEdits",
 		"--model",
 		"claude-opus-4-5-20251101",
 		"--allowed-tools",
