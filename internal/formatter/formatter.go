@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -103,10 +104,22 @@ type Formatter struct {
 	startTime       time.Time
 	toolCallMap     map[string]int // Maps tool_use_id to index in tools slice
 	printedToolsHdr bool           // Track if we've printed "Tools:" header
+	mdRenderer      *glamour.TermRenderer
 }
 
 // New creates a new Formatter with the given configuration
 func New(cfg Config) *Formatter {
+	// Initialize glamour markdown renderer with a nice style
+	// Use "auto" style which adapts to terminal background (light/dark)
+	mdRenderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(0), // No wrapping, let terminal handle it
+	)
+	if err != nil {
+		// Fallback to nil renderer if initialization fails
+		mdRenderer = nil
+	}
+
 	return &Formatter{
 		output:          cfg.Output,
 		verbose:         cfg.Verbose,
@@ -117,6 +130,7 @@ func New(cfg Config) *Formatter {
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
 		printedToolsHdr: false,
+		mdRenderer:      mdRenderer,
 	}
 }
 
@@ -222,7 +236,8 @@ func (f *Formatter) Format(input io.Reader) error {
 
 			// Print only the final result
 			if msg.Result != "" {
-				fmt.Fprintln(f.output, msg.Result)
+				rendered := f.renderMarkdown(msg.Result)
+				fmt.Fprintln(f.output, rendered)
 			}
 
 			// Print usage information if requested
@@ -504,6 +519,24 @@ func (f *Formatter) extractResultText(result interface{}) string {
 	default:
 		return fmt.Sprintf("%v", result)
 	}
+}
+
+// renderMarkdown renders markdown text using glamour, or returns plain text if unavailable
+func (f *Formatter) renderMarkdown(text string) string {
+	// If no renderer available, return plain text
+	if f.mdRenderer == nil {
+		return text
+	}
+
+	// Render the markdown
+	rendered, err := f.mdRenderer.Render(text)
+	if err != nil {
+		// Fallback to plain text if rendering fails
+		return text
+	}
+
+	// glamour adds a trailing newline, so trim it
+	return strings.TrimSuffix(rendered, "\n")
 }
 
 // printUsage prints token usage information
