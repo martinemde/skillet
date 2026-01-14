@@ -134,6 +134,122 @@ streaming, verbose logging, and programmatic usage, see the
 [SDK documentation](https://docs.claude.com/en/docs/agent-sdk).
 
 
+### Permission system
+
+Permission rules use the format: `Tool` or `Tool(optional-specifier)`
+
+A rule that is just the tool name matches any use of that tool. For example, adding `Bash` to the list of allow rules would allow Claude Code to use the Bash tool without requiring user approval.
+
+#### Permission modes
+
+Claude Code supports several permission modes that can be set as the `defaultMode` in [settings files](/en/settings#settings-files):
+
+| Mode                | Description                                                                                                               |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------ |
+| `default`           | Standard behavior - prompts for permission on first use of each tool                                                      |
+| `acceptEdits`       | Automatically accepts file edit permissions for the session                                                               |
+| `plan`              | Plan Mode - Claude can analyze but not modify files or execute commands                                                   |
+| `dontAsk`           | Auto-denies tools unless pre-approved via `/permissions` or [`permissions.allow`](/en/settings#permission-settings) rules |
+| `bypassPermissions` | Skips all permission prompts (requires safe environment - see warning below)                                              |
+
+#### Working directories
+
+By default, Claude has access to files in the directory where it was launched. You can extend this access:
+
+* **During startup**: Use `--add-dir <path>` CLI argument
+* **During session**: Use `/add-dir` slash command
+* **Persistent configuration**: Add to `additionalDirectories` in [settings files](/en/settings#settings-files)
+
+Files in additional directories follow the same permission rules as the original working directory - they become readable without prompts, and file editing permissions follow the current permission mode.
+
+#### Tool-specific permission rules
+
+Some tools support more fine-grained permission controls:
+
+**Bash**
+
+Bash permission rules support both prefix matching with `:*` and wildcard matching with `*`:
+
+* `Bash(npm run build)` Matches the exact Bash command `npm run build`
+* `Bash(npm run test:*)` Matches Bash commands starting with `npm run test`
+* `Bash(npm *)` Matches any command starting with `npm ` (e.g., `npm install`, `npm run build`)
+* `Bash(* install)` Matches any command ending with ` install` (e.g., `npm install`, `yarn install`)
+* `Bash(git * main)` Matches commands like `git checkout main`, `git merge main`
+
+<Tip>
+  Claude Code is aware of shell operators (like `&&`) so a prefix match rule like `Bash(safe-cmd:*)` won't give it permission to run the command `safe-cmd && other-cmd`
+</Tip>
+
+<Warning>
+  Important limitations of Bash permission patterns:
+
+  1. The `:*` wildcard only works at the end of a pattern for prefix matching
+  2. The `*` wildcard can appear at any position and matches any sequence of characters
+  3. Patterns like `Bash(curl http://github.com/:*)` can be bypassed in many ways:
+     * Options before URL: `curl -X GET http://github.com/...` won't match
+     * Different protocol: `curl https://github.com/...` won't match
+     * Redirects: `curl -L http://bit.ly/xyz` (redirects to github)
+     * Variables: `URL=http://github.com && curl $URL` won't match
+     * Extra spaces: `curl  http://github.com` won't match
+
+  For more reliable URL filtering, consider:
+
+  * Using the WebFetch tool with `WebFetch(domain:github.com)` permission
+  * Instructing Claude Code about your allowed curl patterns via CLAUDE.md
+  * Using hooks for custom permission validation
+</Warning>
+
+**Read & Edit**
+
+`Edit` rules apply to all built-in tools that edit files. Claude will make a best-effort attempt to apply `Read` rules to all built-in tools that read files like Grep and Glob.
+
+Read & Edit rules both follow the [gitignore](https://git-scm.com/docs/gitignore) specification with four distinct pattern types:
+
+| Pattern            | Meaning                                | Example                          | Matches                            |
+| ------------------ | -------------------------------------- | -------------------------------- | ---------------------------------- |
+| `//path`           | **Absolute** path from filesystem root | `Read(//Users/alice/secrets/**)` | `/Users/alice/secrets/**`          |
+| `~/path`           | Path from **home** directory           | `Read(~/Documents/*.pdf)`        | `/Users/alice/Documents/*.pdf`     |
+| `/path`            | Path **relative to settings file**     | `Edit(/src/**/*.ts)`             | `<settings file path>/src/**/*.ts` |
+| `path` or `./path` | Path **relative to current directory** | `Read(*.env)`                    | `<cwd>/*.env`                      |
+
+<Warning>
+  A pattern like `/Users/alice/file` is NOT an absolute path - it's relative to your settings file! Use `//Users/alice/file` for absolute paths.
+</Warning>
+
+* `Edit(/docs/**)` - Edits in `<project>/docs/` (NOT `/docs/`!)
+* `Read(~/.zshrc)` - Reads your home directory's `.zshrc`
+* `Edit(//tmp/scratch.txt)` - Edits the absolute path `/tmp/scratch.txt`
+* `Read(src/**)` - Reads from `<current-directory>/src/`
+
+**WebFetch**
+
+* `WebFetch(domain:example.com)` Matches fetch requests to example.com
+
+**MCP**
+
+* `mcp__puppeteer` Matches any tool provided by the `puppeteer` server (name configured in Claude Code)
+* `mcp__puppeteer__*` Wildcard syntax that also matches all tools from the `puppeteer` server
+* `mcp__puppeteer__puppeteer_navigate` Matches the `puppeteer_navigate` tool provided by the `puppeteer` server
+
+**Task (Subagents)**
+
+Use `Task(AgentName)` rules to control which [subagents](/en/sub-agents) Claude can use:
+
+* `Task(Explore)` Matches the Explore subagent
+* `Task(Plan)` Matches the Plan subagent
+* `Task(Verify)` Matches the Verify subagent
+
+Add these rules to the `deny` array in your [settings](/en/settings#permission-settings) or use the `--disallowedTools` CLI flag to disable specific agents. For example, to disable the Explore agent:
+
+```json  theme={null}
+{
+  "permissions": {
+    "deny": ["Task(Explore)"]
+  }
+}
+```
+
+
 ---
 
 > To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt
