@@ -32,7 +32,7 @@ go.work.sum
 # .vscode/
 
 # Built binaries
-skillet
+/skillet
 dist/
 build/
 
