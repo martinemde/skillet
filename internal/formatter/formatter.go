@@ -436,7 +436,7 @@ func (f *Formatter) printToolDetails(tool ToolOperation) {
 	case "Grep", "Glob":
 		f.buildSearchOutput(&content, tool)
 	case "TodoWrite":
-		f.buildTodoOutput(&content, tool)
+		// Do nothing, handleded by status line
 	default:
 		// For other tools, show basic input/output
 		f.buildGenericToolOutput(&content, tool)
@@ -550,39 +550,6 @@ func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
 					_, _ = fmt.Fprintf(f.output, "○ %s\n", content)
 				}
 			}
-		}
-	}
-}
-
-// buildTodoOutput writes todo list changes
-func (f *Formatter) buildTodoOutput(w *strings.Builder, tool ToolOperation) {
-	// Extract todos from the input
-	if todos, ok := tool.Input["todos"].([]any); ok {
-		var todoLines []string
-		for _, todoItem := range todos {
-			if todo, ok := todoItem.(map[string]any); ok {
-				content, _ := todo["content"].(string)
-				status, _ := todo["status"].(string)
-
-				// Use markdown checkbox format
-				var checkbox string
-				switch status {
-				case "completed":
-					checkbox = "- [x]"
-				case "in_progress":
-					checkbox = "- [○]" // Circle for in-progress
-				default:
-					checkbox = "- [ ]"
-				}
-
-				todoLines = append(todoLines, fmt.Sprintf("%s %s", checkbox, content))
-			}
-		}
-
-		if len(todoLines) > 0 {
-			todoText := strings.Join(todoLines, "\n")
-			rendered := f.renderMarkdown(todoText)
-			fmt.Fprint(w, rendered)
 		}
 	}
 }
