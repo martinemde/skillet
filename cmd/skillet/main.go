@@ -279,7 +279,7 @@ func printHelp(w io.Writer) {
 		"  The skill path can be:",
 		"  • An exact file path "+codeStyle.Render("(e.g., path/to/SKILL.md)"),
 		"  • A directory containing SKILL.md "+codeStyle.Render("(e.g., path/to/skill)"),
-		"  • A skill name in .claude/skills/ "+codeStyle.Render("(e.g., write-skill)"),
+		"  • A skill name in .claude/skills/ "+codeStyle.Render("(e.g., skill-name)"),
 		"  • A URL to a skill file "+codeStyle.Render("(e.g., https://example.com/skill.md)"),
 	)
 
@@ -304,22 +304,22 @@ func printHelp(w io.Writer) {
 skillet path/to/SKILL.md
 
 # Run a skill by directory (looks for SKILL.md inside)
-skillet .claude/skills/write-skill
+skillet .claude/skills/skill-name
 
-# Run a skill by name (looks in .claude/skills/<name>/SKILL.md)
-skillet write-skill
+# Run a skill by name (looks in .claude/skills/<skill-name>/SKILL.md)
+skillet skill-name
 
 # Run a skill from a URL
 skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 
 # Run with a custom prompt
-skillet --prompt "Analyze this code" write-skill
+skillet --prompt "Analyze this code" skill-namg
 
 # Show what command would be executed
-skillet --dry-run write-skill
+skillet --dry-run skill-name
 
 # Show verbose output and usage statistics
-skillet --verbose --usage write-skill
+skillet --verbose --usage skill-name
 ~~~`
 
 	examples := lipgloss.JoinVertical(lipgloss.Left,
