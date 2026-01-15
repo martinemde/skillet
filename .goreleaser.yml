@@ -25,7 +25,6 @@ builds:
 
 archives:
   - id: skillet
-    format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -33,9 +32,6 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - README.md
       - LICENSE*
@@ -85,9 +81,8 @@ release:
   footer: |
     **Full Changelog**: https://github.com/martinemde/skillet/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-brews:
-  - name: skillet
-    repository:
+homebrew:
+  - repository:
       owner: martinemde
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"

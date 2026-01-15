@@ -98,7 +98,7 @@ var (
 type Config struct {
 	Output          io.Writer
 	Verbose         bool
-	Debug           bool   // If true, print raw JSON lines to stderr
+	Debug           bool // If true, print raw JSON lines to stderr
 	ShowUsage       bool
 	PassthroughMode bool   // If true, stream output directly without parsing
 	SkillName       string // Name of the skill being executed
@@ -108,7 +108,7 @@ type Config struct {
 type Formatter struct {
 	output          io.Writer
 	verbose         bool
-	debug           bool   // If true, print raw JSON lines to stderr
+	debug           bool // If true, print raw JSON lines to stderr
 	showUsage       bool
 	passthroughMode bool   // If true, stream output directly without parsing
 	skillName       string // Name of the skill being executed
