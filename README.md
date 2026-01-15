@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="screenshot.png" alt="Skillet" width="600">
+<img src="screenshot.png" alt="Skillet" width="800">
 
 # Skillet
 
