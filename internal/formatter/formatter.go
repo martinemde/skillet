@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 // Message represents different types of messages in the stream
@@ -31,13 +32,13 @@ type MessageContent struct {
 
 // Content represents a piece of content in a message
 type Content struct {
-	Type      string                 `json:"type"`
-	Text      string                 `json:"text,omitempty"`
-	ID        string                 `json:"id,omitempty"`
-	Name      string                 `json:"name,omitempty"`
-	Input     map[string]interface{} `json:"input,omitempty"`
-	Content   interface{}            `json:"content,omitempty"`
-	ToolUseID string                 `json:"tool_use_id,omitempty"`
+	Type      string         `json:"type"`
+	Text      string         `json:"text,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Input     map[string]any `json:"input,omitempty"`
+	Content   any            `json:"content,omitempty"`
+	ToolUseID string         `json:"tool_use_id,omitempty"`
 }
 
 // Usage represents token usage information
@@ -57,9 +58,19 @@ type ToolOperation struct {
 	Target string // filename, command, or key parameter
 	Status string // "pending", "success", "error", "empty"
 	Error  string
-	Input  map[string]interface{}
-	Result interface{}
+	Input  map[string]any
+	Result any
 }
+
+// Output truncation limits
+const (
+	maxPatternDisplayLength = 20
+	maxErrorDisplayLength   = 100
+	maxGenericOutputLength  = 200
+	maxReadOutputLines      = 20
+	maxBashOutputLines      = 30
+	maxSearchOutputLines    = 15
+)
 
 // Styles for terminal output
 var (
@@ -67,7 +78,6 @@ var (
 	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
 	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	separator   = dimStyle.Render("───────────────────────────────────────────")
 
 	// Verbose content styles
 	thinkingStyle = lipgloss.NewStyle().
@@ -75,20 +85,21 @@ var (
 			Italic(true).
 			MarginLeft(2)
 
-	outputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")). // Dim
+	// Tool detail box style for verbose output
+	toolBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")). // Dim border
+			Padding(0, 1).
 			MarginLeft(2).
-			PaddingLeft(1)
-
-	commentaryStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("7")). // Light gray
-			MarginLeft(2)
+			MarginTop(0).
+			MarginBottom(1)
 )
 
 // Config holds configuration options for the Formatter
 type Config struct {
 	Output          io.Writer
 	Verbose         bool
+	Debug           bool // If true, print raw JSON lines to stderr
 	ShowUsage       bool
 	PassthroughMode bool   // If true, stream output directly without parsing
 	SkillName       string // Name of the skill being executed
@@ -98,14 +109,13 @@ type Config struct {
 type Formatter struct {
 	output          io.Writer
 	verbose         bool
+	debug           bool // If true, print raw JSON lines to stderr
 	showUsage       bool
 	passthroughMode bool   // If true, stream output directly without parsing
 	skillName       string // Name of the skill being executed
-	toolCount       int
 	tools           []ToolOperation
 	startTime       time.Time
 	toolCallMap     map[string]int // Maps tool_use_id to index in tools slice
-	printedToolsHdr bool           // Track if we've printed "Tools:" header
 	mdRenderer      *glamour.TermRenderer
 }
 
@@ -125,14 +135,12 @@ func New(cfg Config) *Formatter {
 	return &Formatter{
 		output:          cfg.Output,
 		verbose:         cfg.Verbose,
+		debug:           cfg.Debug,
 		showUsage:       cfg.ShowUsage,
 		passthroughMode: cfg.PassthroughMode,
 		skillName:       cfg.SkillName,
-		toolCount:       0,
-		tools:           make([]ToolOperation, 0),
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
-		printedToolsHdr: false,
 		mdRenderer:      mdRenderer,
 	}
 }
@@ -146,12 +154,16 @@ func (f *Formatter) Format(input io.Reader) error {
 	}
 
 	scanner := bufio.NewScanner(input)
-	var textBuilder strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "" {
 			continue
+		}
+
+		// In debug mode, print raw JSON to stderr
+		if f.debug {
+			fmt.Fprintf(os.Stderr, "DEBUG JSON: %s\n", line)
 		}
 
 		var msg Message
@@ -167,100 +179,111 @@ func (f *Formatter) Format(input io.Reader) error {
 
 		switch msg.Type {
 		case "system":
-			if msg.Subtype == "init" {
-				fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
-			}
-
+			f.handleSystemMessage(msg)
 		case "assistant":
-			if msg.Message != nil {
-				for _, content := range msg.Message.Content {
-					switch content.Type {
-					case "thinking":
-						// Display thinking blocks in verbose mode
-						if f.verbose && content.Text != "" {
-							fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
-							fmt.Fprintln(f.output)
-						}
-
-					case "text":
-						if content.Text != "" {
-							// In verbose mode, stream commentary as it comes in
-							if f.verbose {
-								fmt.Fprintln(f.output, commentaryStyle.Render(content.Text))
-								fmt.Fprintln(f.output)
-							}
-							textBuilder.WriteString(content.Text)
-						}
-
-					case "tool_use":
-						f.toolCount++
-						// Create a new tool operation
-						op := ToolOperation{
-							ID:     content.ID,
-							Name:   content.Name,
-							Target: f.extractTarget(content.Name, content.Input),
-							Status: "pending",
-							Input:  content.Input,
-						}
-						f.toolCallMap[content.ID] = len(f.tools)
-						f.tools = append(f.tools, op)
-					}
-				}
-			}
-
+			f.handleAssistantMessage(msg)
 		case "user":
-			// Handle tool results
-			if msg.Message != nil {
-				for _, content := range msg.Message.Content {
-					if content.Type == "tool_result" && content.ToolUseID != "" {
-						if idx, ok := f.toolCallMap[content.ToolUseID]; ok {
-							f.tools[idx].Result = content.Content
-							f.tools[idx].Status = f.determineStatus(content.Content)
-							if f.tools[idx].Status == "error" {
-								f.tools[idx].Error = f.extractError(content.Content)
-							}
-							// Immediately print this tool operation
-							f.printToolOperation(f.tools[idx])
-						}
-					}
-				}
-			}
-
+			f.handleUserMessage(msg)
 		case "result":
-			// Print separator if we printed any tools
-			if f.printedToolsHdr {
-				fmt.Fprintln(f.output)
-				fmt.Fprintln(f.output, separator)
-				fmt.Fprintln(f.output)
-			}
-
-			// Print only the final result
-			if msg.Result != "" {
-				rendered := f.renderMarkdown(msg.Result)
-				fmt.Fprintln(f.output, rendered)
-			}
-
-			// Print usage information if requested
-			if f.showUsage && msg.Usage != nil {
-				f.printUsage(msg.Usage)
-			}
-
-			// Print completion status
-			elapsed := time.Since(f.startTime)
-			fmt.Fprintln(f.output)
-			if msg.IsError {
-				fmt.Fprintln(f.output, errorIcon.String()+" Failed")
-			} else {
-				fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
-			}
+			f.handleResultMessage(msg)
 		}
 	}
 
 	return scanner.Err()
 }
 
+// handleSystemMessage processes system-level messages
+func (f *Formatter) handleSystemMessage(msg Message) {
+	if msg.Subtype == "init" {
+		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
+	}
+}
+
+// handleAssistantMessage processes assistant response messages
+func (f *Formatter) handleAssistantMessage(msg Message) {
+	if msg.Message == nil {
+		return
+	}
+
+	for _, content := range msg.Message.Content {
+		switch content.Type {
+		case "thinking":
+			// Display thinking blocks in verbose mode
+			if f.verbose && content.Text != "" {
+				_, _ = fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
+				_, _ = fmt.Fprintln(f.output)
+			}
+
+		case "text":
+			if content.Text != "" {
+				// In verbose mode, stream commentary with markdown formatting
+				if f.verbose {
+					rendered := f.renderMarkdown(content.Text)
+					_, _ = fmt.Fprintln(f.output, rendered)
+				}
+			}
+
+		case "tool_use":
+			// Create a new tool operation
+			op := ToolOperation{
+				ID:     content.ID,
+				Name:   content.Name,
+				Target: f.extractTarget(content.Name, content.Input),
+				Status: "pending",
+				Input:  content.Input,
+			}
+			f.toolCallMap[content.ID] = len(f.tools)
+			f.tools = append(f.tools, op)
+		}
+	}
+}
+
+// handleUserMessage processes user messages (typically tool results)
+func (f *Formatter) handleUserMessage(msg Message) {
+	if msg.Message == nil {
+		return
+	}
+
+	for _, content := range msg.Message.Content {
+		if content.Type == "tool_result" && content.ToolUseID != "" {
+			if idx, ok := f.toolCallMap[content.ToolUseID]; ok {
+				f.tools[idx].Result = content.Content
+				f.tools[idx].Status = f.determineStatus(content.Content)
+				if f.tools[idx].Status == "error" {
+					f.tools[idx].Error = f.extractError(content.Content)
+				}
+				// Immediately print this tool operation
+				f.printToolOperation(f.tools[idx])
+			}
+		}
+	}
+}
+
+// handleResultMessage processes final result messages
+func (f *Formatter) handleResultMessage(msg Message) {
+	// Print only the final result (skip in verbose mode since we already streamed it)
+	if !f.verbose && msg.Result != "" {
+		rendered := f.renderMarkdown(msg.Result)
+		_, _ = fmt.Fprintln(f.output, rendered)
+	}
+
+	// Print usage information if requested
+	if f.showUsage && msg.Usage != nil {
+		f.printUsage(msg.Usage)
+	}
+
+	// Print completion status
+	elapsed := time.Since(f.startTime)
+	_, _ = fmt.Fprintln(f.output)
+	if msg.IsError {
+		_, _ = fmt.Fprintln(f.output, errorIcon.String()+" Failed")
+	} else {
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
+	}
+}
+
 // extractTarget extracts the key parameter from tool input
-func (f *Formatter) extractTarget(toolName string, input map[string]interface{}) string {
+func (f *Formatter) extractTarget(toolName string, input map[string]any) string {
 	switch toolName {
 	case "Read", "Write", "Edit":
 		if path, ok := input["file_path"].(string); ok {
@@ -269,8 +292,12 @@ func (f *Formatter) extractTarget(toolName string, input map[string]interface{})
 			return parts[len(parts)-1]
 		}
 	case "Bash":
+		// Prefer description if available
+		if desc, ok := input["description"].(string); ok {
+			return desc
+		}
+		// Fallback to first word of command
 		if cmd, ok := input["command"].(string); ok {
-			// Get first word of command
 			parts := strings.Fields(cmd)
 			if len(parts) > 0 {
 				return parts[0]
@@ -278,8 +305,8 @@ func (f *Formatter) extractTarget(toolName string, input map[string]interface{})
 		}
 	case "Grep":
 		if pattern, ok := input["pattern"].(string); ok {
-			if len(pattern) > 20 {
-				return pattern[:17] + "..."
+			if len(pattern) > maxPatternDisplayLength {
+				return pattern[:maxPatternDisplayLength-3] + "..."
 			}
 			return pattern
 		}
@@ -292,7 +319,7 @@ func (f *Formatter) extractTarget(toolName string, input map[string]interface{})
 }
 
 // determineStatus determines the status of a tool result
-func (f *Formatter) determineStatus(content interface{}) string {
+func (f *Formatter) determineStatus(content any) string {
 	// Check if it's an error
 	switch v := content.(type) {
 	case string:
@@ -302,13 +329,13 @@ func (f *Formatter) determineStatus(content interface{}) string {
 		if v == "" || v == "[]" {
 			return "empty"
 		}
-	case []interface{}:
+	case []any:
 		if len(v) == 0 {
 			return "empty"
 		}
 		// Check array content for errors
 		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
+			if m, ok := item.(map[string]any); ok {
 				if text, ok := m["text"].(string); ok {
 					if strings.Contains(text, "<tool_use_error>") {
 						return "error"
@@ -320,34 +347,38 @@ func (f *Formatter) determineStatus(content interface{}) string {
 	return "success"
 }
 
+// extractErrorFromText extracts error message from a string
+func extractErrorFromText(text string) string {
+	// Extract text between <tool_use_error> tags
+	if start := strings.Index(text, "<tool_use_error>"); start != -1 {
+		if end := strings.Index(text, "</tool_use_error>"); end != -1 {
+			return text[start+16 : end]
+		}
+	}
+	// Return truncated text if it contains "error"
+	if strings.Contains(strings.ToLower(text), "error") {
+		if len(text) > maxErrorDisplayLength {
+			return text[:maxErrorDisplayLength-3] + "..."
+		}
+		return text
+	}
+	return ""
+}
+
 // extractError extracts error message from tool result
-func (f *Formatter) extractError(content interface{}) string {
+func (f *Formatter) extractError(content any) string {
 	switch v := content.(type) {
 	case string:
-		// Extract text between <tool_use_error> tags
-		if start := strings.Index(v, "<tool_use_error>"); start != -1 {
-			if end := strings.Index(v, "</tool_use_error>"); end != -1 {
-				return v[start+16 : end]
-			}
+		if err := extractErrorFromText(v); err != "" {
+			return err
 		}
-		// Return first 100 chars if it contains "error"
-		if strings.Contains(strings.ToLower(v), "error") {
-			if len(v) > 100 {
-				return v[:97] + "..."
-			}
-			return v
-		}
-	case []interface{}:
+	case []any:
 		// Check array content for errors
 		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
+			if m, ok := item.(map[string]any); ok {
 				if text, ok := m["text"].(string); ok {
-					if strings.Contains(text, "<tool_use_error>") {
-						if start := strings.Index(text, "<tool_use_error>"); start != -1 {
-							if end := strings.Index(text, "</tool_use_error>"); end != -1 {
-								return text[start+16 : end]
-							}
-						}
+					if err := extractErrorFromText(text); err != "" {
+						return err
 					}
 				}
 			}
@@ -358,8 +389,11 @@ func (f *Formatter) extractError(content interface{}) string {
 
 // printToolOperation prints a single tool operation as it completes
 func (f *Formatter) printToolOperation(tool ToolOperation) {
-	// Track that we've printed at least one tool
-	f.printedToolsHdr = true
+	// Special handling for TodoWrite - always show todos as status lines
+	if tool.Name == "TodoWrite" {
+		f.printTodoStatusLines(tool)
+		return
+	}
 
 	// Choose icon based on status
 	icon := successIcon
@@ -378,7 +412,7 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 	if tool.Status == "error" && tool.Error != "" {
 		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
 	}
-	fmt.Fprintln(f.output, line)
+	_, _ = fmt.Fprintln(f.output, line)
 
 	// In verbose mode, show details
 	if f.verbose {
@@ -388,137 +422,252 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 
 // printToolDetails prints detailed tool information in verbose mode
 func (f *Formatter) printToolDetails(tool ToolOperation) {
+	// Collect output in a buffer to wrap it in a box
+	var content strings.Builder
+
 	// Show tool-specific output based on the tool type
 	switch tool.Name {
 	case "Read":
-		f.printReadOutput(tool)
+		f.buildReadOutput(&content, tool)
 	case "Write", "Edit":
-		f.printWriteOutput(tool)
+		f.buildWriteOutput(&content, tool)
 	case "Bash":
-		f.printBashOutput(tool)
+		f.buildBashOutput(&content, tool)
 	case "Grep", "Glob":
-		f.printSearchOutput(tool)
+		f.buildSearchOutput(&content, tool)
+	case "TodoWrite":
+		f.buildTodoOutput(&content, tool)
 	default:
 		// For other tools, show basic input/output
-		f.printGenericToolOutput(tool)
+		f.buildGenericToolOutput(&content, tool)
 	}
 
-	fmt.Fprintln(f.output) // Add spacing between tools in verbose mode
+	// Only print if there's content
+	if content.Len() > 0 {
+		// Wrap in styled box
+		boxed := toolBoxStyle.Render(strings.TrimRight(content.String(), "\n"))
+		_, _ = fmt.Fprintln(f.output, boxed)
+	}
 }
 
-// printReadOutput shows file contents for Read operations
-func (f *Formatter) printReadOutput(tool ToolOperation) {
-	if tool.Result == nil {
+// buildTruncatedLines writes text with line truncation to a builder
+func (f *Formatter) buildTruncatedLines(w *strings.Builder, text string, maxLines int, label string) {
+	if text == "" {
 		return
 	}
 
-	// Extract file contents from result
-	resultStr := f.extractResultText(tool.Result)
-	if resultStr != "" {
-		// Show first 20 lines or full content if shorter
-		lines := strings.Split(resultStr, "\n")
-		maxLines := 20
-		if len(lines) > maxLines {
-			content := strings.Join(lines[:maxLines], "\n")
-			fmt.Fprintln(f.output, outputStyle.Render(content))
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-maxLines)))
-		} else {
-			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
-		}
+	text = strings.TrimRight(text, "\n\r")
+	lines := strings.Split(text, "\n")
+
+	if len(lines) > maxLines {
+		content := strings.Join(lines[:maxLines], "\n")
+		fmt.Fprintln(w, content)
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
+	} else {
+		fmt.Fprintln(w, text)
 	}
 }
 
-// printWriteOutput shows confirmation for Write/Edit operations
-func (f *Formatter) printWriteOutput(tool ToolOperation) {
+// buildReadOutput writes file contents for Read operations
+func (f *Formatter) buildReadOutput(w *strings.Builder, tool ToolOperation) {
+	if tool.Result == nil {
+		return
+	}
+	resultStr := f.extractResultText(tool.Result)
+	f.buildTruncatedLines(w, resultStr, maxReadOutputLines, "lines")
+}
+
+// buildWriteOutput writes confirmation for Write/Edit operations
+func (f *Formatter) buildWriteOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Status == "success" {
 		if filePath, ok := tool.Input["file_path"].(string); ok {
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → wrote to %s", filePath)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ wrote to %s", filePath)))
 		}
 	}
 }
 
-// printBashOutput shows command output for Bash operations
-func (f *Formatter) printBashOutput(tool ToolOperation) {
+// buildBashOutput writes command output for Bash operations
+func (f *Formatter) buildBashOutput(w *strings.Builder, tool ToolOperation) {
+	// Show the command itself as a code block
+	if cmd, ok := tool.Input["command"].(string); ok {
+		cmdBlock := fmt.Sprintf("```sh\n$ %s\n```", cmd)
+		rendered := f.renderMarkdown(cmdBlock)
+		fmt.Fprint(w, rendered)
+	}
+
 	if tool.Result == nil {
 		return
 	}
 
 	resultStr := f.extractResultText(tool.Result)
-	if resultStr != "" {
-		// Show command output with light styling
-		lines := strings.Split(resultStr, "\n")
-		maxLines := 30
-		if len(lines) > maxLines {
-			content := strings.Join(lines[:maxLines], "\n")
-			fmt.Fprintln(f.output, outputStyle.Render(content))
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-maxLines)))
-		} else {
-			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
-		}
-	}
-}
-
-// printSearchOutput shows search results for Grep/Glob operations
-func (f *Formatter) printSearchOutput(tool ToolOperation) {
-	if tool.Result == nil {
+	if resultStr == "" {
 		return
 	}
 
+	// Show command output in a code block for consistent styling
+	resultStr = strings.TrimRight(resultStr, "\n\r")
+	lines := strings.Split(resultStr, "\n")
+
+	if len(lines) > maxBashOutputLines {
+		content := strings.Join(lines[:maxBashOutputLines], "\n")
+		resultBlock := fmt.Sprintf("```sh\n%s\n```", content)
+		rendered := f.renderMarkdown(resultBlock)
+		fmt.Fprint(w, rendered)
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
+	} else {
+		resultBlock := fmt.Sprintf("```sh\n%s\n```", resultStr)
+		rendered := f.renderMarkdown(resultBlock)
+		fmt.Fprint(w, rendered)
+	}
+}
+
+// buildSearchOutput writes search results for Grep/Glob operations
+func (f *Formatter) buildSearchOutput(w *strings.Builder, tool ToolOperation) {
+	if tool.Result == nil {
+		return
+	}
 	resultStr := f.extractResultText(tool.Result)
-	if resultStr != "" {
-		lines := strings.Split(resultStr, "\n")
-		maxLines := 15
-		if len(lines) > maxLines {
-			content := strings.Join(lines[:maxLines], "\n")
-			fmt.Fprintln(f.output, outputStyle.Render(content))
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more results)", len(lines)-maxLines)))
-		} else {
-			fmt.Fprintln(f.output, outputStyle.Render(resultStr))
+	f.buildTruncatedLines(w, resultStr, maxSearchOutputLines, "results")
+}
+
+// printTodoStatusLines shows todos as individual status lines
+func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
+	// Extract todos from the input
+	if todos, ok := tool.Input["todos"].([]any); ok {
+		for _, todoItem := range todos {
+			if todo, ok := todoItem.(map[string]any); ok {
+				content, _ := todo["content"].(string)
+				status, _ := todo["status"].(string)
+
+				if status == "completed" {
+					// Hide completed items entirely
+					continue
+				} else if status == "in_progress" {
+					// Use filled circle for in-progress
+					_, _ = fmt.Fprintf(f.output, "⏺ %s\n", content)
+				} else {
+					// Use empty circle for pending
+					_, _ = fmt.Fprintf(f.output, "○ %s\n", content)
+				}
+			}
 		}
 	}
 }
 
-// printGenericToolOutput shows basic input/output for other tools
-func (f *Formatter) printGenericToolOutput(tool ToolOperation) {
+// buildTodoOutput writes todo list changes
+func (f *Formatter) buildTodoOutput(w *strings.Builder, tool ToolOperation) {
+	// Extract todos from the input
+	if todos, ok := tool.Input["todos"].([]any); ok {
+		var todoLines []string
+		for _, todoItem := range todos {
+			if todo, ok := todoItem.(map[string]any); ok {
+				content, _ := todo["content"].(string)
+				status, _ := todo["status"].(string)
+
+				// Use markdown checkbox format
+				var checkbox string
+				switch status {
+				case "completed":
+					checkbox = "- [x]"
+				case "in_progress":
+					checkbox = "- [○]" // Circle for in-progress
+				default:
+					checkbox = "- [ ]"
+				}
+
+				todoLines = append(todoLines, fmt.Sprintf("%s %s", checkbox, content))
+			}
+		}
+
+		if len(todoLines) > 0 {
+			todoText := strings.Join(todoLines, "\n")
+			rendered := f.renderMarkdown(todoText)
+			fmt.Fprint(w, rendered)
+		}
+	}
+}
+
+// buildGenericToolOutput writes basic input/output for other tools
+func (f *Formatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperation) {
 	// Show key input parameters
 	if len(tool.Input) > 0 {
 		for k, v := range tool.Input {
 			vStr := fmt.Sprintf("%v", v)
-			if len(vStr) > 100 {
-				vStr = vStr[:97] + "..."
+			if len(vStr) > maxErrorDisplayLength {
+				vStr = vStr[:maxErrorDisplayLength-3] + "..."
 			}
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s: %s", k, vStr)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
 		}
 	}
 
 	// Show result summary
 	if tool.Result != nil && tool.Status != "error" {
 		resultStr := f.extractResultText(tool.Result)
-		if resultStr != "" && len(resultStr) < 200 {
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s", resultStr)))
+		if resultStr != "" && len(resultStr) < maxGenericOutputLength {
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s", resultStr)))
 		}
 	}
 }
 
 // extractResultText extracts text from a tool result
-func (f *Formatter) extractResultText(result interface{}) string {
+func (f *Formatter) extractResultText(result any) string {
 	switch v := result.(type) {
 	case string:
-		return v
-	case []interface{}:
+		return stripSystemReminders(v)
+	case []any:
 		// Handle array of content blocks
 		var builder strings.Builder
 		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
+			if m, ok := item.(map[string]any); ok {
 				if text, ok := m["text"].(string); ok {
 					builder.WriteString(text)
 				}
 			}
 		}
-		return builder.String()
+		return stripSystemReminders(builder.String())
 	default:
 		return fmt.Sprintf("%v", result)
 	}
+}
+
+// stripSystemReminders removes <system-reminder>...</system-reminder> tags and their content
+func stripSystemReminders(text string) string {
+	for {
+		start := strings.Index(text, "<system-reminder>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(text[start:], "</system-reminder>")
+		if end == -1 {
+			// Unclosed tag, just remove from start to end
+			text = text[:start]
+			break
+		}
+		// Remove the entire tag including newlines around it
+		end = start + end + len("</system-reminder>")
+
+		// Clean up extra newlines: if there are newlines before and after, keep only one
+		beforeStart := start
+		afterEnd := end
+
+		// Check for newlines before the tag
+		for beforeStart > 0 && (text[beforeStart-1] == '\n' || text[beforeStart-1] == '\r') {
+			beforeStart--
+		}
+
+		// Check for newlines after the tag
+		for afterEnd < len(text) && (text[afterEnd] == '\n' || text[afterEnd] == '\r') {
+			afterEnd++
+		}
+
+		// Remove the tag and surrounding whitespace, keep one newline if there was content before
+		if beforeStart > 0 && afterEnd < len(text) {
+			text = text[:beforeStart] + "\n" + text[afterEnd:]
+		} else {
+			text = text[:beforeStart] + text[afterEnd:]
+		}
+	}
+	return text
 }
 
 // renderMarkdown renders markdown text using glamour, or returns plain text if unavailable
@@ -535,28 +684,30 @@ func (f *Formatter) renderMarkdown(text string) string {
 		return text
 	}
 
-	// glamour adds a trailing newline, so trim it
-	return strings.TrimSuffix(rendered, "\n")
+	// glamour adds leading/trailing newlines for formatting, trim them
+	return strings.TrimSpace(rendered)
 }
 
-// printUsage prints token usage information
+// printUsage prints token usage information in a styled table
 func (f *Formatter) printUsage(usage *Usage) {
-	_, _ = fmt.Fprintln(f.output, "\n--- Usage Statistics ---")
-	_, _ = fmt.Fprintf(f.output, "Input tokens: %d\n", usage.InputTokens)
-	_, _ = fmt.Fprintf(f.output, "Output tokens: %d\n", usage.OutputTokens)
+	// Build table rows
+	rows := [][]string{
+		{"Input tokens", fmt.Sprintf("%d", usage.InputTokens)},
+		{"Output tokens", fmt.Sprintf("%d", usage.OutputTokens)},
+	}
 
 	if usage.CacheReadInputTokens > 0 {
-		_, _ = fmt.Fprintf(f.output, "Cache read tokens: %d\n", usage.CacheReadInputTokens)
+		rows = append(rows, []string{"Cache read tokens", fmt.Sprintf("%d", usage.CacheReadInputTokens)})
 	}
 
 	if usage.CacheCreationInputTokens > 0 {
-		_, _ = fmt.Fprintf(f.output, "Cache creation tokens: %d\n", usage.CacheCreationInputTokens)
+		rows = append(rows, []string{"Cache creation tokens", fmt.Sprintf("%d", usage.CacheCreationInputTokens)})
 	}
 
 	if usage.CacheCreation != nil {
 		for k, v := range usage.CacheCreation {
 			if v > 0 {
-				_, _ = fmt.Fprintf(f.output, "Cache creation (%s): %d\n", k, v)
+				rows = append(rows, []string{fmt.Sprintf("Cache creation (%s)", k), fmt.Sprintf("%d", v)})
 			}
 		}
 	}
@@ -564,10 +715,26 @@ func (f *Formatter) printUsage(usage *Usage) {
 	if usage.ServerToolUse != nil {
 		for k, v := range usage.ServerToolUse {
 			if v > 0 {
-				_, _ = fmt.Fprintf(f.output, "Server tool use (%s): %d\n", k, v)
+				rows = append(rows, []string{fmt.Sprintf("Server tool use (%s)", k), fmt.Sprintf("%d", v)})
 			}
 		}
 	}
 
-	_, _ = fmt.Fprintln(f.output, "------------------------")
+	// Create styled table
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))). // Dim border
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if col == 0 {
+				// Metric name column - dim style
+				return dimStyle
+			}
+			// Value column - normal style
+			return lipgloss.NewStyle()
+		}).
+		Headers("Usage Statistics", "Count").
+		Rows(rows...)
+
+	_, _ = fmt.Fprintln(f.output)
+	_, _ = fmt.Fprintln(f.output, t)
 }

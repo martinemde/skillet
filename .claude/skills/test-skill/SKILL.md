@@ -11,7 +11,10 @@ This is a simple test skill to verify skillet is working correctly.
 
 ## Task
 
-Create a file called `greeting.txt` in the current directory with the following content:
+Create a todo list item:
+
+1. Check if the greeting.txt file exists
+2. Write a new version of the greeting.txt file with the content
 
 ```
 Hello from Skillet!
