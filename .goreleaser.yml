@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
 before:
@@ -37,17 +38,17 @@ archives:
       - LICENSE*
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 
 changelog:
   sort: asc
   use: github
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^ci:'
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
       - Merge pull request
       - Merge branch
   groups:
@@ -81,16 +82,14 @@ release:
   footer: |
     **Full Changelog**: https://github.com/martinemde/skillet/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-homebrew:
-  - repository:
+homebrew_casks:
+  - name: skillet
+    binaries:
+      - skillet
+    repository:
       owner: martinemde
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: https://github.com/martinemde/skillet
     description: Run Agent SKILL.md files as shell commands with Claude Code
     license: MIT
-    install: |
-      bin.install "skillet"
-    test: |
-      system "#{bin}/skillet", "--version"
