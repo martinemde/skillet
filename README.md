@@ -62,14 +62,11 @@ go build -o skillet ./cmd/skillet
 ## Usage
 
 ```bash
-# Direct file path
-skillet path/to/SKILL.md
+# Direct file or path containing a SKILL.md
+skillet path/skillname[/SKILL.md]
 
-# Directory (automatically finds SKILL.md)
-skillet path/to/skill-directory
-
-# Skill name shortcut (looks in .claude/skills/<name>/SKILL.md)
-skillet write-skill
+# Skill name shortcut (looks in all .claude/skills/<name>/SKILL.md paths)
+skillet skill-name
 
 # Remote URL
 skillet https://raw.githubusercontent.com/user/repo/main/skill.md
