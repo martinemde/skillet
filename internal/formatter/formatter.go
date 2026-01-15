@@ -85,15 +85,6 @@ var (
 			Italic(true).
 			MarginLeft(2)
 
-	outputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")). // Dim
-			MarginLeft(2).
-			PaddingLeft(1)
-
-	commentaryStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("7")). // Light gray
-			MarginLeft(2)
-
 	// Tool detail box style for verbose output
 	toolBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -204,7 +195,7 @@ func (f *Formatter) Format(input io.Reader) error {
 // handleSystemMessage processes system-level messages
 func (f *Formatter) handleSystemMessage(msg Message) {
 	if msg.Subtype == "init" {
-		fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
+		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
 	}
 }
 
@@ -219,8 +210,8 @@ func (f *Formatter) handleAssistantMessage(msg Message) {
 		case "thinking":
 			// Display thinking blocks in verbose mode
 			if f.verbose && content.Text != "" {
-				fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
-				fmt.Fprintln(f.output)
+				_, _ = fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
+				_, _ = fmt.Fprintln(f.output)
 			}
 
 		case "text":
@@ -228,7 +219,7 @@ func (f *Formatter) handleAssistantMessage(msg Message) {
 				// In verbose mode, stream commentary with markdown formatting
 				if f.verbose {
 					rendered := f.renderMarkdown(content.Text)
-					fmt.Fprintln(f.output, rendered)
+					_, _ = fmt.Fprintln(f.output, rendered)
 				}
 			}
 
@@ -273,7 +264,7 @@ func (f *Formatter) handleResultMessage(msg Message) {
 	// Print only the final result (skip in verbose mode since we already streamed it)
 	if !f.verbose && msg.Result != "" {
 		rendered := f.renderMarkdown(msg.Result)
-		fmt.Fprintln(f.output, rendered)
+		_, _ = fmt.Fprintln(f.output, rendered)
 	}
 
 	// Print usage information if requested
@@ -283,11 +274,11 @@ func (f *Formatter) handleResultMessage(msg Message) {
 
 	// Print completion status
 	elapsed := time.Since(f.startTime)
-	fmt.Fprintln(f.output)
+	_, _ = fmt.Fprintln(f.output)
 	if msg.IsError {
-		fmt.Fprintln(f.output, errorIcon.String()+" Failed")
+		_, _ = fmt.Fprintln(f.output, errorIcon.String()+" Failed")
 	} else {
-		fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
 	}
 }
 
@@ -421,7 +412,7 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 	if tool.Status == "error" && tool.Error != "" {
 		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
 	}
-	fmt.Fprintln(f.output, line)
+	_, _ = fmt.Fprintln(f.output, line)
 
 	// In verbose mode, show details
 	if f.verbose {
@@ -455,7 +446,7 @@ func (f *Formatter) printToolDetails(tool ToolOperation) {
 	if content.Len() > 0 {
 		// Wrap in styled box
 		boxed := toolBoxStyle.Render(strings.TrimRight(content.String(), "\n"))
-		fmt.Fprintln(f.output, boxed)
+		_, _ = fmt.Fprintln(f.output, boxed)
 	}
 }
 
@@ -553,10 +544,10 @@ func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
 					continue
 				} else if status == "in_progress" {
 					// Use filled circle for in-progress
-					fmt.Fprintf(f.output, "⏺ %s\n", content)
+					_, _ = fmt.Fprintf(f.output, "⏺ %s\n", content)
 				} else {
 					// Use empty circle for pending
-					fmt.Fprintf(f.output, "○ %s\n", content)
+					_, _ = fmt.Fprintf(f.output, "○ %s\n", content)
 				}
 			}
 		}
@@ -574,11 +565,14 @@ func (f *Formatter) buildTodoOutput(w *strings.Builder, tool ToolOperation) {
 				status, _ := todo["status"].(string)
 
 				// Use markdown checkbox format
-				checkbox := "- [ ]"
-				if status == "completed" {
+				var checkbox string
+				switch status {
+				case "completed":
 					checkbox = "- [x]"
-				} else if status == "in_progress" {
+				case "in_progress":
 					checkbox = "- [○]" // Circle for in-progress
+				default:
+					checkbox = "- [ ]"
 				}
 
 				todoLines = append(todoLines, fmt.Sprintf("%s %s", checkbox, content))
@@ -741,6 +735,6 @@ func (f *Formatter) printUsage(usage *Usage) {
 		Headers("Usage Statistics", "Count").
 		Rows(rows...)
 
-	fmt.Fprintln(f.output)
-	fmt.Fprintln(f.output, t)
+	_, _ = fmt.Fprintln(f.output)
+	_, _ = fmt.Fprintln(f.output, t)
 }

@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
@@ -217,6 +219,28 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 func printHelp(w io.Writer) {
+	// Initialize markdown renderer
+	mdRenderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(0),
+	)
+	if err != nil {
+		// Fallback to plain text if renderer fails
+		mdRenderer = nil
+	}
+
+	// Helper to render markdown or return plain text
+	renderMarkdown := func(text string) string {
+		if mdRenderer == nil {
+			return text
+		}
+		rendered, err := mdRenderer.Render(text)
+		if err != nil {
+			return text
+		}
+		return strings.TrimSpace(rendered)
+	}
+
 	// Styles for help text
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -274,44 +298,54 @@ func printHelp(w io.Writer) {
 		fmt.Sprintf("  %s     Override output format (default: stream-json)", optionStyle.Render("--output-format")),
 	)
 
+	// Render examples with markdown
+	examplesBlock := `~~~sh
+# Run a skill by exact path
+skillet path/to/SKILL.md
+
+# Run a skill by directory (looks for SKILL.md inside)
+skillet .claude/skills/write-skill
+
+# Run a skill by name (looks in .claude/skills/<name>/SKILL.md)
+skillet write-skill
+
+# Run a skill from a URL
+skillet https://raw.githubusercontent.com/user/repo/main/skill.md
+
+# Run with a custom prompt
+skillet --prompt "Analyze this code" write-skill
+
+# Show what command would be executed
+skillet --dry-run write-skill
+
+# Show verbose output and usage statistics
+skillet --verbose --usage write-skill
+~~~`
+
 	examples := lipgloss.JoinVertical(lipgloss.Left,
 		sectionStyle.Render("Examples:"),
-		codeStyle.Render("  # Run a skill by exact path"),
-		"  skillet path/to/SKILL.md",
-		"",
-		codeStyle.Render("  # Run a skill by directory (looks for SKILL.md inside)"),
-		"  skillet .claude/skills/write-skill",
-		"",
-		codeStyle.Render("  # Run a skill by name (looks in .claude/skills/<name>/SKILL.md)"),
-		"  skillet write-skill",
-		"",
-		codeStyle.Render("  # Run a skill from a URL"),
-		"  skillet https://raw.githubusercontent.com/user/repo/main/skill.md",
-		"",
-		codeStyle.Render("  # Run with a custom prompt"),
-		"  skillet --prompt \"Analyze this code\" write-skill",
-		"",
-		codeStyle.Render("  # Show what command would be executed"),
-		"  skillet --dry-run write-skill",
-		"",
-		codeStyle.Render("  # Show verbose output and usage statistics"),
-		"  skillet --verbose --usage write-skill",
+		renderMarkdown(examplesBlock),
 	)
+
+	// Render SKILL.md format example with markdown renderer
+	skillFormatExample := `~~~yaml
+---
+name: skill-name
+description: What this skill does and when to use it
+allowed-tools: Read,Write,Bash
+model: claude-opus-4-5-20251101
+---
+
+# Skill Instructions
+
+Your skill instructions go here...
+~~~`
 
 	skillFormat := lipgloss.JoinVertical(lipgloss.Left,
 		sectionStyle.Render("SKILL.md Format:"),
 		"  A SKILL.md file must contain YAML frontmatter followed by markdown content:",
 		"",
-		codeStyle.Render("  ---"),
-		codeStyle.Render("  name: skill-name"),
-		codeStyle.Render("  description: What this skill does and when to use it"),
-		codeStyle.Render("  allowed-tools: Read,Write,Bash"),
-		codeStyle.Render("  model: claude-opus-4-5-20251101"),
-		codeStyle.Render("  ---"),
-		"",
-		codeStyle.Render("  # Skill Instructions"),
-		"",
-		codeStyle.Render("  Your skill instructions go here..."),
+		renderMarkdown(skillFormatExample),
 	)
 
 	footer := "\nFor more information, see: " + lipgloss.NewStyle().
