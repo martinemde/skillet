@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 // Message represents different types of messages in the stream
@@ -92,6 +93,15 @@ var (
 	commentaryStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("7")). // Light gray
 			MarginLeft(2)
+
+	// Tool detail box style for verbose output
+	toolBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")). // Dim border
+			Padding(0, 1).
+			MarginLeft(2).
+			MarginTop(0).
+			MarginBottom(1)
 )
 
 // Config holds configuration options for the Formatter
@@ -421,26 +431,36 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 
 // printToolDetails prints detailed tool information in verbose mode
 func (f *Formatter) printToolDetails(tool ToolOperation) {
+	// Collect output in a buffer to wrap it in a box
+	var content strings.Builder
+
 	// Show tool-specific output based on the tool type
 	switch tool.Name {
 	case "Read":
-		f.printReadOutput(tool)
+		f.buildReadOutput(&content, tool)
 	case "Write", "Edit":
-		f.printWriteOutput(tool)
+		f.buildWriteOutput(&content, tool)
 	case "Bash":
-		f.printBashOutput(tool)
+		f.buildBashOutput(&content, tool)
 	case "Grep", "Glob":
-		f.printSearchOutput(tool)
+		f.buildSearchOutput(&content, tool)
 	case "TodoWrite":
-		f.printTodoOutput(tool)
+		f.buildTodoOutput(&content, tool)
 	default:
 		// For other tools, show basic input/output
-		f.printGenericToolOutput(tool)
+		f.buildGenericToolOutput(&content, tool)
+	}
+
+	// Only print if there's content
+	if content.Len() > 0 {
+		// Wrap in styled box
+		boxed := toolBoxStyle.Render(strings.TrimRight(content.String(), "\n"))
+		fmt.Fprintln(f.output, boxed)
 	}
 }
 
-// printTruncatedLines prints text with line truncation
-func (f *Formatter) printTruncatedLines(text string, maxLines int, label string) {
+// buildTruncatedLines writes text with line truncation to a builder
+func (f *Formatter) buildTruncatedLines(w *strings.Builder, text string, maxLines int, label string) {
 	if text == "" {
 		return
 	}
@@ -450,38 +470,38 @@ func (f *Formatter) printTruncatedLines(text string, maxLines int, label string)
 
 	if len(lines) > maxLines {
 		content := strings.Join(lines[:maxLines], "\n")
-		fmt.Fprintln(f.output, outputStyle.Render(content))
-		fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more %s)", len(lines)-maxLines, label)))
+		fmt.Fprintln(w, content)
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
 	} else {
-		fmt.Fprintln(f.output, outputStyle.Render(text))
+		fmt.Fprintln(w, text)
 	}
 }
 
-// printReadOutput shows file contents for Read operations
-func (f *Formatter) printReadOutput(tool ToolOperation) {
+// buildReadOutput writes file contents for Read operations
+func (f *Formatter) buildReadOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Result == nil {
 		return
 	}
 	resultStr := f.extractResultText(tool.Result)
-	f.printTruncatedLines(resultStr, maxReadOutputLines, "lines")
+	f.buildTruncatedLines(w, resultStr, maxReadOutputLines, "lines")
 }
 
-// printWriteOutput shows confirmation for Write/Edit operations
-func (f *Formatter) printWriteOutput(tool ToolOperation) {
+// buildWriteOutput writes confirmation for Write/Edit operations
+func (f *Formatter) buildWriteOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Status == "success" {
 		if filePath, ok := tool.Input["file_path"].(string); ok {
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → wrote to %s", filePath)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ wrote to %s", filePath)))
 		}
 	}
 }
 
-// printBashOutput shows command output for Bash operations
-func (f *Formatter) printBashOutput(tool ToolOperation) {
+// buildBashOutput writes command output for Bash operations
+func (f *Formatter) buildBashOutput(w *strings.Builder, tool ToolOperation) {
 	// Show the command itself as a code block
 	if cmd, ok := tool.Input["command"].(string); ok {
 		cmdBlock := fmt.Sprintf("```sh\n$ %s\n```", cmd)
 		rendered := f.renderMarkdown(cmdBlock)
-		fmt.Fprint(f.output, rendered)
+		fmt.Fprint(w, rendered)
 	}
 
 	if tool.Result == nil {
@@ -501,22 +521,22 @@ func (f *Formatter) printBashOutput(tool ToolOperation) {
 		content := strings.Join(lines[:maxBashOutputLines], "\n")
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", content)
 		rendered := f.renderMarkdown(resultBlock)
-		fmt.Fprint(f.output, rendered)
-		fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-maxBashOutputLines)))
+		fmt.Fprint(w, rendered)
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
 	} else {
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", resultStr)
 		rendered := f.renderMarkdown(resultBlock)
-		fmt.Fprint(f.output, rendered)
+		fmt.Fprint(w, rendered)
 	}
 }
 
-// printSearchOutput shows search results for Grep/Glob operations
-func (f *Formatter) printSearchOutput(tool ToolOperation) {
+// buildSearchOutput writes search results for Grep/Glob operations
+func (f *Formatter) buildSearchOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Result == nil {
 		return
 	}
 	resultStr := f.extractResultText(tool.Result)
-	f.printTruncatedLines(resultStr, maxSearchOutputLines, "results")
+	f.buildTruncatedLines(w, resultStr, maxSearchOutputLines, "results")
 }
 
 // printTodoStatusLines shows todos as individual status lines
@@ -543,8 +563,8 @@ func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
 	}
 }
 
-// printTodoOutput shows todo list changes
-func (f *Formatter) printTodoOutput(tool ToolOperation) {
+// buildTodoOutput writes todo list changes
+func (f *Formatter) buildTodoOutput(w *strings.Builder, tool ToolOperation) {
 	// Extract todos from the input
 	if todos, ok := tool.Input["todos"].([]any); ok {
 		var todoLines []string
@@ -568,13 +588,13 @@ func (f *Formatter) printTodoOutput(tool ToolOperation) {
 		if len(todoLines) > 0 {
 			todoText := strings.Join(todoLines, "\n")
 			rendered := f.renderMarkdown(todoText)
-			fmt.Fprint(f.output, rendered)
+			fmt.Fprint(w, rendered)
 		}
 	}
 }
 
-// printGenericToolOutput shows basic input/output for other tools
-func (f *Formatter) printGenericToolOutput(tool ToolOperation) {
+// buildGenericToolOutput writes basic input/output for other tools
+func (f *Formatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperation) {
 	// Show key input parameters
 	if len(tool.Input) > 0 {
 		for k, v := range tool.Input {
@@ -582,7 +602,7 @@ func (f *Formatter) printGenericToolOutput(tool ToolOperation) {
 			if len(vStr) > maxErrorDisplayLength {
 				vStr = vStr[:maxErrorDisplayLength-3] + "..."
 			}
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s: %s", k, vStr)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
 		}
 	}
 
@@ -590,7 +610,7 @@ func (f *Formatter) printGenericToolOutput(tool ToolOperation) {
 	if tool.Result != nil && tool.Status != "error" {
 		resultStr := f.extractResultText(tool.Result)
 		if resultStr != "" && len(resultStr) < maxGenericOutputLength {
-			fmt.Fprintln(f.output, dimStyle.Render(fmt.Sprintf("  → %s", resultStr)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s", resultStr)))
 		}
 	}
 }
@@ -674,24 +694,26 @@ func (f *Formatter) renderMarkdown(text string) string {
 	return strings.TrimSpace(rendered)
 }
 
-// printUsage prints token usage information
+// printUsage prints token usage information in a styled table
 func (f *Formatter) printUsage(usage *Usage) {
-	fmt.Fprintln(f.output, "\n--- Usage Statistics ---")
-	fmt.Fprintf(f.output, "Input tokens: %d\n", usage.InputTokens)
-	fmt.Fprintf(f.output, "Output tokens: %d\n", usage.OutputTokens)
+	// Build table rows
+	rows := [][]string{
+		{"Input tokens", fmt.Sprintf("%d", usage.InputTokens)},
+		{"Output tokens", fmt.Sprintf("%d", usage.OutputTokens)},
+	}
 
 	if usage.CacheReadInputTokens > 0 {
-		fmt.Fprintf(f.output, "Cache read tokens: %d\n", usage.CacheReadInputTokens)
+		rows = append(rows, []string{"Cache read tokens", fmt.Sprintf("%d", usage.CacheReadInputTokens)})
 	}
 
 	if usage.CacheCreationInputTokens > 0 {
-		fmt.Fprintf(f.output, "Cache creation tokens: %d\n", usage.CacheCreationInputTokens)
+		rows = append(rows, []string{"Cache creation tokens", fmt.Sprintf("%d", usage.CacheCreationInputTokens)})
 	}
 
 	if usage.CacheCreation != nil {
 		for k, v := range usage.CacheCreation {
 			if v > 0 {
-				fmt.Fprintf(f.output, "Cache creation (%s): %d\n", k, v)
+				rows = append(rows, []string{fmt.Sprintf("Cache creation (%s)", k), fmt.Sprintf("%d", v)})
 			}
 		}
 	}
@@ -699,10 +721,26 @@ func (f *Formatter) printUsage(usage *Usage) {
 	if usage.ServerToolUse != nil {
 		for k, v := range usage.ServerToolUse {
 			if v > 0 {
-				fmt.Fprintf(f.output, "Server tool use (%s): %d\n", k, v)
+				rows = append(rows, []string{fmt.Sprintf("Server tool use (%s)", k), fmt.Sprintf("%d", v)})
 			}
 		}
 	}
 
-	fmt.Fprintln(f.output, "------------------------")
+	// Create styled table
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))). // Dim border
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if col == 0 {
+				// Metric name column - dim style
+				return dimStyle
+			}
+			// Value column - normal style
+			return lipgloss.NewStyle()
+		}).
+		Headers("Usage Statistics", "Count").
+		Rows(rows...)
+
+	fmt.Fprintln(f.output)
+	fmt.Fprintln(f.output, t)
 }

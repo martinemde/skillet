@@ -101,13 +101,17 @@ func TestFormat_WithUsage(t *testing.T) {
 
 	result := output.String()
 
-	// Check for usage statistics
+	// Check for usage statistics (now in table format)
 	expectedStrings := []string{
-		"Usage Statistics",
-		"Input tokens: 100",
-		"Output tokens: 50",
-		"Cache read tokens: 25",
-		"Cache creation tokens: 10",
+		"Usage Statistics", // Table header
+		"Input tokens",
+		"100",
+		"Output tokens",
+		"50",
+		"Cache read tokens",
+		"25",
+		"Cache creation tokens",
+		"10",
 	}
 
 	for _, expected := range expectedStrings {
@@ -253,14 +257,21 @@ func TestPrintUsage(t *testing.T) {
 
 	result := output.String()
 
+	// Check for usage statistics (now in table format)
 	expectedStrings := []string{
-		"Usage Statistics",
-		"Input tokens: 100",
-		"Output tokens: 50",
-		"Cache read tokens: 25",
-		"Cache creation tokens: 10",
-		"Cache creation (ephemeral_5m_input_tokens): 5",
-		"Server tool use (web_search_requests): 3",
+		"Usage Statistics", // Table header
+		"Input tokens",
+		"100",
+		"Output tokens",
+		"50",
+		"Cache read tokens",
+		"25",
+		"Cache creation tokens",
+		"10",
+		"Cache creation (ephemeral_5m_input_tokens)",
+		"5",
+		"Server tool use (web_search_requests)",
+		"3",
 	}
 
 	for _, expected := range expectedStrings {

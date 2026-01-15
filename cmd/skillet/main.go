@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/parser"
@@ -216,71 +217,118 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 func printHelp(w io.Writer) {
-	_, _ = fmt.Fprintf(w, `skillet - Run SKILL.md files with Claude CLI
+	// Styles for help text
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("6")). // Cyan
+		MarginBottom(1)
 
-Usage:
-  skillet [options] <skill-path>
+	sectionStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("3")). // Yellow
+		MarginTop(1)
 
-Description:
-  Skillet parses SKILL.md files and executes them using the Claude CLI.
-  It reads the frontmatter configuration, interpolates variables, and
-  invokes Claude with the appropriate arguments in headless mode.
+	optionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("2")) // Green
 
-  The skill path can be:
-  - An exact file path (e.g., path/to/SKILL.md)
-  - A directory containing SKILL.md (e.g., path/to/skill)
-  - A skill name in .claude/skills/ (e.g., write-skill)
-  - A URL to a skill file (e.g., https://example.com/skill.md)
+	codeStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")). // Dim
+		Italic(true)
 
-Options:
-  --help              Show this help message
-  --version           Show version information
-  --verbose           Show verbose output including raw JSON stream
-  --debug             Show raw stream JSON as it's received
-  --usage             Show token usage statistics after execution
-  --dry-run           Show the command that would be executed without running it
-  --prompt            Optional prompt to pass to Claude (default: uses skill description)
-  --model             Override model to use (overrides SKILL.md setting)
-  --allowed-tools     Override allowed tools (overrides SKILL.md setting)
-  --permission-mode   Override permission mode (default: acceptEdits)
-  --output-format     Override output format (default: stream-json)
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("7")) // Light gray
 
-Examples:
-  # Run a skill by exact path
-  skillet path/to/SKILL.md
+	// Build help content
+	title := titleStyle.Render("skillet - Run SKILL.md files with Claude CLI")
 
-  # Run a skill by directory (looks for SKILL.md inside)
-  skillet .claude/skills/write-skill
+	usage := lipgloss.JoinVertical(lipgloss.Left,
+		sectionStyle.Render("Usage:"),
+		"  skillet [options] <skill-path>",
+	)
 
-  # Run a skill by name (looks in .claude/skills/<name>/SKILL.md)
-  skillet write-skill
+	description := lipgloss.JoinVertical(lipgloss.Left,
+		sectionStyle.Render("Description:"),
+		descStyle.Render("  Skillet parses SKILL.md files and executes them using the Claude CLI."),
+		descStyle.Render("  It reads the frontmatter configuration, interpolates variables, and"),
+		descStyle.Render("  invokes Claude with the appropriate arguments in headless mode."),
+		"",
+		"  The skill path can be:",
+		"  • An exact file path "+codeStyle.Render("(e.g., path/to/SKILL.md)"),
+		"  • A directory containing SKILL.md "+codeStyle.Render("(e.g., path/to/skill)"),
+		"  • A skill name in .claude/skills/ "+codeStyle.Render("(e.g., write-skill)"),
+		"  • A URL to a skill file "+codeStyle.Render("(e.g., https://example.com/skill.md)"),
+	)
 
-  # Run a skill from a URL
-  skillet https://raw.githubusercontent.com/user/repo/main/skill.md
+	options := lipgloss.JoinVertical(lipgloss.Left,
+		sectionStyle.Render("Options:"),
+		fmt.Sprintf("  %s              Show this help message", optionStyle.Render("--help")),
+		fmt.Sprintf("  %s           Show version information", optionStyle.Render("--version")),
+		fmt.Sprintf("  %s           Show verbose output including raw JSON stream", optionStyle.Render("--verbose")),
+		fmt.Sprintf("  %s             Show raw stream JSON as it's received", optionStyle.Render("--debug")),
+		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
+		fmt.Sprintf("  %s           Show the command that would be executed without running it", optionStyle.Render("--dry-run")),
+		fmt.Sprintf("  %s            Optional prompt to pass to Claude (default: uses skill description)", optionStyle.Render("--prompt")),
+		fmt.Sprintf("  %s             Override model to use (overrides SKILL.md setting)", optionStyle.Render("--model")),
+		fmt.Sprintf("  %s     Override allowed tools (overrides SKILL.md setting)", optionStyle.Render("--allowed-tools")),
+		fmt.Sprintf("  %s   Override permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
+		fmt.Sprintf("  %s     Override output format (default: stream-json)", optionStyle.Render("--output-format")),
+	)
 
-  # Run with a custom prompt
-  skillet --prompt "Analyze this code" write-skill
+	examples := lipgloss.JoinVertical(lipgloss.Left,
+		sectionStyle.Render("Examples:"),
+		codeStyle.Render("  # Run a skill by exact path"),
+		"  skillet path/to/SKILL.md",
+		"",
+		codeStyle.Render("  # Run a skill by directory (looks for SKILL.md inside)"),
+		"  skillet .claude/skills/write-skill",
+		"",
+		codeStyle.Render("  # Run a skill by name (looks in .claude/skills/<name>/SKILL.md)"),
+		"  skillet write-skill",
+		"",
+		codeStyle.Render("  # Run a skill from a URL"),
+		"  skillet https://raw.githubusercontent.com/user/repo/main/skill.md",
+		"",
+		codeStyle.Render("  # Run with a custom prompt"),
+		"  skillet --prompt \"Analyze this code\" write-skill",
+		"",
+		codeStyle.Render("  # Show what command would be executed"),
+		"  skillet --dry-run write-skill",
+		"",
+		codeStyle.Render("  # Show verbose output and usage statistics"),
+		"  skillet --verbose --usage write-skill",
+	)
 
-  # Show what command would be executed
-  skillet --dry-run write-skill
+	skillFormat := lipgloss.JoinVertical(lipgloss.Left,
+		sectionStyle.Render("SKILL.md Format:"),
+		"  A SKILL.md file must contain YAML frontmatter followed by markdown content:",
+		"",
+		codeStyle.Render("  ---"),
+		codeStyle.Render("  name: skill-name"),
+		codeStyle.Render("  description: What this skill does and when to use it"),
+		codeStyle.Render("  allowed-tools: Read,Write,Bash"),
+		codeStyle.Render("  model: claude-opus-4-5-20251101"),
+		codeStyle.Render("  ---"),
+		"",
+		codeStyle.Render("  # Skill Instructions"),
+		"",
+		codeStyle.Render("  Your skill instructions go here..."),
+	)
 
-  # Show verbose output and usage statistics
-  skillet --verbose --usage write-skill
+	footer := "\nFor more information, see: " + lipgloss.NewStyle().
+		Foreground(lipgloss.Color("4")).
+		Underline(true).
+		Render("https://agentskills.io")
 
-SKILL.md Format:
-  A SKILL.md file must contain YAML frontmatter followed by markdown content:
+	// Combine all sections
+	help := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		usage,
+		description,
+		options,
+		examples,
+		skillFormat,
+		footer,
+	)
 
-  ---
-  name: skill-name
-  description: What this skill does and when to use it
-  allowed-tools: Read,Write,Bash
-  model: claude-opus-4-5-20251101
-  ---
-
-  # Skill Instructions
-
-  Your skill instructions go here...
-
-For more information, see: https://agentskills.io
-`)
+	_, _ = fmt.Fprintln(w, help)
 }
