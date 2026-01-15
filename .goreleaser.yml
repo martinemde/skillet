@@ -91,7 +91,7 @@ brews:
       owner: martinemde
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: https://github.com/martinemde/skillet
     description: Run Agent SKILL.md files as shell commands with Claude Code
     license: MIT
