@@ -163,7 +163,9 @@ func TestFormat_ErrorResult(t *testing.T) {
 }
 
 func TestFormat_VerboseMode(t *testing.T) {
+	// In verbose mode, text is streamed as it comes, not printed at the end
 	input := `{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Test message"}]}}
 {"type":"result","result":"Test message","is_error":false}`
 
 	var output bytes.Buffer
@@ -177,10 +179,9 @@ func TestFormat_VerboseMode(t *testing.T) {
 
 	result := output.String()
 
-	// In verbose mode, debug output goes to stderr, not the main output
-	// Verify the result message appears and session started appears
+	// In verbose mode, text is streamed as it arrives
 	if !strings.Contains(result, "Test message") {
-		t.Errorf("Verbose output should contain result message, got: %s", result)
+		t.Errorf("Verbose output should contain streamed text, got: %s", result)
 	}
 	if !strings.Contains(result, "Starting test-skill") {
 		t.Errorf("Verbose output should contain starting message, got: %s", result)
@@ -435,5 +436,132 @@ func TestFormat_VerboseWithoutPassthrough(t *testing.T) {
 	// Should NOT be raw JSON
 	if strings.Contains(result, `"type":"system"`) {
 		t.Errorf("Verbose mode should not output raw JSON when passthroughMode is false, got: %s", result)
+	}
+}
+
+func TestFormat_TodoWrite_NonVerbose(t *testing.T) {
+	// TodoWrite should display as status lines even in non-verbose mode
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"First task","status":"pending","activeForm":"Doing first task"},{"content":"Second task","status":"in_progress","activeForm":"Doing second task"},{"content":"Third task","status":"completed","activeForm":"Did third task"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show pending task with empty circle
+	if !strings.Contains(result, "○ First task") {
+		t.Errorf("Output should contain pending task with ○, got: %s", result)
+	}
+
+	// Should show in-progress task with filled circle
+	if !strings.Contains(result, "⏺ Second task") {
+		t.Errorf("Output should contain in-progress task with ⏺, got: %s", result)
+	}
+
+	// Should NOT show completed task
+	if strings.Contains(result, "Third task") {
+		t.Errorf("Output should not contain completed task, got: %s", result)
+	}
+
+	// Should NOT show traditional tool format
+	if strings.Contains(result, "TodoWrite") {
+		t.Errorf("Output should not show TodoWrite as a tool, got: %s", result)
+	}
+}
+
+func TestFormat_TodoWrite_Verbose(t *testing.T) {
+	// TodoWrite should display as status lines in verbose mode too
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"First task","status":"pending","activeForm":"Doing first task"},{"content":"Second task","status":"in_progress","activeForm":"Doing second task"},{"content":"Third task","status":"completed","activeForm":"Did third task"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: true})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show pending task with empty circle
+	if !strings.Contains(result, "○ First task") {
+		t.Errorf("Output should contain pending task with ○, got: %s", result)
+	}
+
+	// Should show in-progress task with filled circle
+	if !strings.Contains(result, "⏺ Second task") {
+		t.Errorf("Output should contain in-progress task with ⏺, got: %s", result)
+	}
+
+	// Should NOT show completed task
+	if strings.Contains(result, "Third task") {
+		t.Errorf("Output should not contain completed task, got: %s", result)
+	}
+
+	// Should NOT show traditional tool format
+	if strings.Contains(result, "TodoWrite") {
+		t.Errorf("Output should not show TodoWrite as a tool, got: %s", result)
+	}
+}
+
+func TestFormat_TodoWrite_AllCompleted(t *testing.T) {
+	// When all todos are completed, nothing should be shown
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"First task","status":"completed","activeForm":"Did first task"},{"content":"Second task","status":"completed","activeForm":"Did second task"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should be empty (no visible todos)
+	if strings.Contains(result, "First task") || strings.Contains(result, "Second task") {
+		t.Errorf("Output should not contain any completed tasks, got: %s", result)
+	}
+}
+
+func TestFormat_TodoWrite_OnlyPending(t *testing.T) {
+	// Only pending todos should show with empty circles
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"Task one","status":"pending","activeForm":"Doing task one"},{"content":"Task two","status":"pending","activeForm":"Doing task two"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show both pending tasks with empty circles
+	if !strings.Contains(result, "○ Task one") {
+		t.Errorf("Output should contain first pending task, got: %s", result)
+	}
+
+	if !strings.Contains(result, "○ Task two") {
+		t.Errorf("Output should contain second pending task, got: %s", result)
+	}
+
+	// Should not have filled circles
+	if strings.Contains(result, "⏺") {
+		t.Errorf("Output should not contain in-progress marker for pending tasks, got: %s", result)
 	}
 }

@@ -56,6 +56,7 @@ func separateFlags(args []string) ([]string, []string) {
 				isBoolFlag := arg == "-version" || arg == "--version" ||
 					arg == "-help" || arg == "--help" ||
 					arg == "-verbose" || arg == "--verbose" ||
+					arg == "-debug" || arg == "--debug" ||
 					arg == "-usage" || arg == "--usage" ||
 					arg == "-dry-run" || arg == "--dry-run"
 
@@ -82,6 +83,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		showVersion    = flags.Bool("version", false, "Show version information")
 		showHelp       = flags.Bool("help", false, "Show help information")
 		verbose        = flags.Bool("verbose", false, "Show verbose output including raw JSON")
+		debug          = flags.Bool("debug", false, "Show raw stream JSON as it's received")
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
 		prompt         = flags.String("prompt", "", "Optional prompt to pass to Claude (if not provided, uses skill description)")
@@ -157,6 +159,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	form := formatter.New(formatter.Config{
 		Output:          stdout,
 		Verbose:         *verbose,
+		Debug:           *debug,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
 		SkillName:       skill.Name,
@@ -233,6 +236,7 @@ Options:
   --help              Show this help message
   --version           Show version information
   --verbose           Show verbose output including raw JSON stream
+  --debug             Show raw stream JSON as it's received
   --usage             Show token usage statistics after execution
   --dry-run           Show the command that would be executed without running it
   --prompt            Optional prompt to pass to Claude (default: uses skill description)
