@@ -40,7 +40,7 @@ I've made many throw-away headless `claude` scripts. None of them ever work on t
 
 Skills solve many of these problems by setting allowed tools, model, and more in the frontmatter, but invoking them from the command line undermines the advantage.
 
-Skillet reass the skill directly just like claude, parses the tools, model, and other frontmatter, and passes that to claude on its command line. The instead of the unpleasant output, Skillet uses Charm, Lipgloss, and Glamour to format markdown and code in a beautiful minimal interface with controllable verbosity.
+Skillet reads and parses the skill directly, just like claude, parses the tools, model, and other frontmatter, then runs `claude` with the correct permissions for the skill. Instead of the unpleasant output, Skillet uses Charm terminal formatting to glam up the markdown hidden in that json, showing code, commands, and even errors in a sleek minimal interface with controllable verbosity.
 
 Skillet makes claude scripting simple.
 
