@@ -16,7 +16,7 @@
 
 ---
 
-Run claude skills as command line scripts with clean, beautiful output.
+Claude skills as _shell_ scripts with clean, beautiful output. :chefkiss:
 
 ```bash
 # Runs .claude/skills/<skill-bame> as a command
