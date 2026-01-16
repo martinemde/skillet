@@ -185,15 +185,20 @@ func run(args []string, stdout, stderr io.Writer) error {
 	exec.SetOutput(pw, stderr)
 
 	// Create formatter
+	// In quiet mode, discard all output (only program errors go to stderr)
+	output := stdout
+	if *quiet {
+		output = io.Discard
+	}
+
 	// If user explicitly set --output-format, we're in passthrough mode
 	form := formatter.New(formatter.Config{
-		Output:          stdout,
+		Output:          output,
 		Verbose:         *verbose,
 		Debug:           *debug,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
 		SkillName:       skill.Name,
-		Quiet:           *quiet,
 		Color:           *color,
 	})
 

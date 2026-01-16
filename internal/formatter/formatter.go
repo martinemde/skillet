@@ -103,7 +103,6 @@ type Config struct {
 	ShowUsage       bool
 	PassthroughMode bool   // If true, stream output directly without parsing
 	SkillName       string // Name of the skill being executed
-	Quiet           bool   // If true, suppress all output except errors
 	Color           string // Color mode: "auto", "always", or "never"
 }
 
@@ -115,7 +114,6 @@ type Formatter struct {
 	showUsage       bool
 	passthroughMode bool   // If true, stream output directly without parsing
 	skillName       string // Name of the skill being executed
-	quiet           bool   // If true, suppress all output except errors
 	color           string // Color mode: "auto", "always", or "never"
 	tools           []ToolOperation
 	startTime       time.Time
@@ -154,7 +152,6 @@ func New(cfg Config) *Formatter {
 		showUsage:       cfg.ShowUsage,
 		passthroughMode: cfg.PassthroughMode,
 		skillName:       cfg.SkillName,
-		quiet:           cfg.Quiet,
 		color:           cfg.Color,
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
@@ -233,10 +230,6 @@ func (f *Formatter) Format(input io.Reader) error {
 
 // handleSystemMessage processes system-level messages
 func (f *Formatter) handleSystemMessage(msg Message) {
-	// Suppress init message in quiet mode
-	if f.quiet {
-		return
-	}
 	if msg.Subtype == "init" {
 		icon := f.applyColorToIcon(successIcon)
 		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
@@ -252,8 +245,8 @@ func (f *Formatter) handleAssistantMessage(msg Message) {
 	for _, content := range msg.Message.Content {
 		switch content.Type {
 		case "thinking":
-			// Display thinking blocks in verbose mode (but not in quiet mode)
-			if f.verbose && !f.quiet && content.Text != "" {
+			// Display thinking blocks in verbose mode
+			if f.verbose && content.Text != "" {
 				style := f.applyColorToStyle(thinkingStyle)
 				_, _ = fmt.Fprintln(f.output, style.Render("💭 "+content.Text))
 				_, _ = fmt.Fprintln(f.output)
@@ -261,8 +254,8 @@ func (f *Formatter) handleAssistantMessage(msg Message) {
 
 		case "text":
 			if content.Text != "" {
-				// In verbose mode, stream commentary with markdown formatting (but not in quiet mode)
-				if f.verbose && !f.quiet {
+				// In verbose mode, stream commentary with markdown formatting
+				if f.verbose {
 					rendered := f.renderMarkdown(content.Text)
 					_, _ = fmt.Fprintln(f.output, rendered)
 				}
@@ -307,28 +300,25 @@ func (f *Formatter) handleUserMessage(msg Message) {
 // handleResultMessage processes final result messages
 func (f *Formatter) handleResultMessage(msg Message) {
 	// Print only the final result (skip in verbose mode since we already streamed it)
-	// In quiet mode, suppress result unless it's an error
-	if !f.quiet && !f.verbose && msg.Result != "" {
+	if !f.verbose && msg.Result != "" {
 		rendered := f.renderMarkdown(msg.Result)
 		_, _ = fmt.Fprintln(f.output, rendered)
 	}
 
-	// Print usage information if requested (suppress in quiet mode)
-	if !f.quiet && f.showUsage && msg.Usage != nil {
+	// Print usage information if requested
+	if f.showUsage && msg.Usage != nil {
 		f.printUsage(msg.Usage)
 	}
 
-	// Print completion status (suppress in quiet mode)
-	if !f.quiet {
-		elapsed := time.Since(f.startTime)
-		_, _ = fmt.Fprintln(f.output)
-		if msg.IsError {
-			icon := f.applyColorToIcon(errorIcon)
-			_, _ = fmt.Fprintln(f.output, icon.String()+" Failed")
-		} else {
-			icon := f.applyColorToIcon(successIcon)
-			_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", icon.String(), elapsed.Seconds())
-		}
+	// Print completion status
+	elapsed := time.Since(f.startTime)
+	_, _ = fmt.Fprintln(f.output)
+	if msg.IsError {
+		icon := f.applyColorToIcon(errorIcon)
+		_, _ = fmt.Fprintln(f.output, icon.String()+" Failed")
+	} else {
+		icon := f.applyColorToIcon(successIcon)
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", icon.String(), elapsed.Seconds())
 	}
 }
 
@@ -439,11 +429,6 @@ func (f *Formatter) extractError(content any) string {
 
 // printToolOperation prints a single tool operation as it completes
 func (f *Formatter) printToolOperation(tool ToolOperation) {
-	// Suppress all tool output in quiet mode
-	if f.quiet {
-		return
-	}
-
 	// Special handling for TodoWrite - always show todos as status lines
 	if tool.Name == "TodoWrite" {
 		f.printTodoStatusLines(tool)
