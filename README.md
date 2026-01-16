@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="screenshot.png" alt="Skillet" width="800">
+<img src="screenshot.png" alt="Skillet" width="1000">
 
-# Skillet
+# 🍳 Skillet
 
-### Run [Agent SKILL.md](https://agentskills.io) files as shell commands with Claude Code
+### Run [Agent Skills](https://agentskills.io) as Shell Scripts
 
 [![Release](https://img.shields.io/github/v/release/martinemde/skillet)](https://github.com/martinemde/skillet/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/martinemde/skillet)](https://go.dev/)
@@ -15,6 +15,32 @@
 </div>
 
 ---
+
+Run and automate claude on the command line by running skills directly with clean, beautiful output.
+
+```bash
+# Runs .claude/skills/<skill-bame> as a command
+skillet skill-name
+
+# Run a remote skill (e.g. the test skill from this repo)
+skillet https://raw.githubusercontent.com/martinemde/skillet/refs/heads/main/.claude/skills/test-skill/SKILL.md
+```
+
+## So What?
+
+Sometimes you want claude to be like a shell script: "generate a summary of this transcript."
+Sometimes you want to be able to run it hundreds of times. With Skillet:
+
+1. Make a `summarize-transcript` skill
+2. Run `skillet summarize-transcript -p "filename"`
+
+I've made many thrwoaway scripts that run `claude` headless. None of them ever work on the first try. They always suck, there's an ugly prompt so ewhere in the middle, and it uses the wrong CLI flags, wrong permissions, or just skips permissions entirely. Plus, the output is either nothing, or an unreadable flood of json.
+
+Skills solve all of this by setting allowed tools, model, and other settings in the frontmatter, but invoking them from the command line still requires getting the CLI flags right instead of reading what the skill needs.
+
+Skillet uses Charm, Lipgloss, and Glamour to make the output shine. No more hack `jq` formatter. Just good readable output with controllable verbosity. 
+
+Skillet makes claude scripting simple.
 
 ## Installation
 
