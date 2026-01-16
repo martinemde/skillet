@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="screenshot.png" alt="Skillet" width="800">
+<img src="screenshot.png" alt="Skillet" width="1000">
 
-# Skillet
+# 🍳 Skillet
 
-### Run [Agent SKILL.md](https://agentskills.io) files as shell commands with Claude Code
+### Run [Agent Skills](https://agentskills.io) as Shell Scripts
 
 [![Release](https://img.shields.io/github/v/release/martinemde/skillet)](https://github.com/martinemde/skillet/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/martinemde/skillet)](https://go.dev/)
@@ -15,6 +15,34 @@
 </div>
 
 ---
+
+Run claude skills as command line scripts with clean, beautiful output.
+
+```bash
+# Runs .claude/skills/<skill-bame> as a command
+skillet skill-name
+
+# Run a remote skill (e.g. the test skill from this repo)
+skillet https://raw.githubusercontent.com/martinemde/skillet/refs/heads/main/.claude/skills/test-skill/SKILL.md
+```
+
+## So What?
+
+Sometimes you want to run claude like a shell script: "generate a summary of this transcript."
+Sometimes you want to be able to run it hundreds of times.
+
+With Skillet:
+
+1. Make a `summarize-transcript` skill
+2. Run `skillet summarize-transcript -p "$filename"`
+
+I've made many throw-away headless `claude` scripts. None of them ever work on the first try. They always suck. There's an ugly prompt buried in the middle. It uses the wrong CLI flags, wrong permissions, or just skips permissions entirely. When you get it to run, your feedback is either _nothing_ or an unreadable flood of json.
+
+Skills solve many of these problems by setting allowed tools, model, and more in the frontmatter, but invoking them from the command line undermines the advantage.
+
+Skillet reads and parses the skill directly, just like claude, parses the tools, model, and other frontmatter, then runs `claude` with the correct permissions for the skill. Instead of the unpleasant output, Skillet uses Charm terminal formatting to glam up the markdown hidden in that json, showing code, commands, and even errors in a sleek minimal interface with controllable verbosity.
+
+Skillet makes claude scripting simple.
 
 ## Installation
 
