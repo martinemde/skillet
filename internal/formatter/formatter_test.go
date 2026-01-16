@@ -466,19 +466,19 @@ func TestFormat_TodoWrite_NonVerbose(t *testing.T) {
 
 	result := output.String()
 
-	// Should show pending task with empty circle
-	if !strings.Contains(result, "○ First task") {
-		t.Errorf("Output should contain pending task with ○, got: %s", result)
+	// Should show pending task with empty checkbox (dimmed)
+	if !strings.Contains(result, "☐ First task") {
+		t.Errorf("Output should contain pending task with ☐, got: %s", result)
 	}
 
-	// Should show in-progress task with filled circle
-	if !strings.Contains(result, "⏺ Second task") {
-		t.Errorf("Output should contain in-progress task with ⏺, got: %s", result)
+	// Should show in-progress task with empty checkbox (prominent)
+	if !strings.Contains(result, "☐ Second task") {
+		t.Errorf("Output should contain in-progress task with ☐, got: %s", result)
 	}
 
-	// Should NOT show completed task
-	if strings.Contains(result, "Third task") {
-		t.Errorf("Output should not contain completed task, got: %s", result)
+	// Should show most recently completed task with ☒
+	if !strings.Contains(result, "☒ Third task") {
+		t.Errorf("Output should contain completed task with ☒, got: %s", result)
 	}
 
 	// Should NOT show traditional tool format
@@ -503,19 +503,19 @@ func TestFormat_TodoWrite_Verbose(t *testing.T) {
 
 	result := output.String()
 
-	// Should show pending task with empty circle
-	if !strings.Contains(result, "○ First task") {
-		t.Errorf("Output should contain pending task with ○, got: %s", result)
+	// Should show pending task with empty checkbox (dimmed)
+	if !strings.Contains(result, "☐ First task") {
+		t.Errorf("Output should contain pending task with ☐, got: %s", result)
 	}
 
-	// Should show in-progress task with filled circle
-	if !strings.Contains(result, "⏺ Second task") {
-		t.Errorf("Output should contain in-progress task with ⏺, got: %s", result)
+	// Should show in-progress task with empty checkbox (prominent)
+	if !strings.Contains(result, "☐ Second task") {
+		t.Errorf("Output should contain in-progress task with ☐, got: %s", result)
 	}
 
-	// Should NOT show completed task
-	if strings.Contains(result, "Third task") {
-		t.Errorf("Output should not contain completed task, got: %s", result)
+	// Should show most recently completed task with ☒
+	if !strings.Contains(result, "☒ Third task") {
+		t.Errorf("Output should contain completed task with ☒, got: %s", result)
 	}
 
 	// Should NOT show traditional tool format
@@ -525,7 +525,7 @@ func TestFormat_TodoWrite_Verbose(t *testing.T) {
 }
 
 func TestFormat_TodoWrite_AllCompleted(t *testing.T) {
-	// When all todos are completed, nothing should be shown
+	// When all todos are completed, only the last completed one should be shown
 	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"First task","status":"completed","activeForm":"Did first task"},{"content":"Second task","status":"completed","activeForm":"Did second task"}]}}]}}
 {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
 
@@ -540,14 +540,19 @@ func TestFormat_TodoWrite_AllCompleted(t *testing.T) {
 
 	result := output.String()
 
-	// Should be empty (no visible todos)
-	if strings.Contains(result, "First task") || strings.Contains(result, "Second task") {
-		t.Errorf("Output should not contain any completed tasks, got: %s", result)
+	// Should show only the last completed task with ☒
+	if !strings.Contains(result, "☒ Second task") {
+		t.Errorf("Output should contain last completed task with ☒, got: %s", result)
+	}
+
+	// Should NOT show first completed task
+	if strings.Contains(result, "First task") {
+		t.Errorf("Output should not contain first completed task, got: %s", result)
 	}
 }
 
 func TestFormat_TodoWrite_OnlyPending(t *testing.T) {
-	// Only pending todos should show with empty circles
+	// Only pending todos should show with empty checkboxes
 	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TodoWrite","input":{"todos":[{"content":"Task one","status":"pending","activeForm":"Doing task one"},{"content":"Task two","status":"pending","activeForm":"Doing task two"}]}}]}}
 {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Todos have been modified successfully"}]}}`
 
@@ -562,17 +567,17 @@ func TestFormat_TodoWrite_OnlyPending(t *testing.T) {
 
 	result := output.String()
 
-	// Should show both pending tasks with empty circles
-	if !strings.Contains(result, "○ Task one") {
+	// Should show both pending tasks with empty checkboxes (dimmed)
+	if !strings.Contains(result, "☐ Task one") {
 		t.Errorf("Output should contain first pending task, got: %s", result)
 	}
 
-	if !strings.Contains(result, "○ Task two") {
+	if !strings.Contains(result, "☐ Task two") {
 		t.Errorf("Output should contain second pending task, got: %s", result)
 	}
 
-	// Should not have filled circles
-	if strings.Contains(result, "⏺") {
-		t.Errorf("Output should not contain in-progress marker for pending tasks, got: %s", result)
+	// Should not have completed checkboxes
+	if strings.Contains(result, "☒") {
+		t.Errorf("Output should not contain completed marker for pending tasks, got: %s", result)
 	}
 }

@@ -76,7 +76,7 @@ const (
 var (
 	successIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
 	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
-	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("○")
+	emptyIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).SetString("☐")
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	// Verbose content styles
@@ -593,20 +593,36 @@ func (f *Formatter) buildSearchOutput(w *strings.Builder, tool ToolOperation) {
 func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
 	// Extract todos from the input
 	if todos, ok := tool.Input["todos"].([]any); ok {
+		// Find the most recently completed task (last one in the list with completed status)
+		var lastCompleted string
+		for _, todoItem := range todos {
+			if todo, ok := todoItem.(map[string]any); ok {
+				if status, _ := todo["status"].(string); status == "completed" {
+					lastCompleted, _ = todo["content"].(string)
+				}
+			}
+		}
+
+		// Show the most recently completed task first (dimmed with ☒)
+		if lastCompleted != "" {
+			_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☒ "+lastCompleted))
+		}
+
+		// Show remaining tasks
 		for _, todoItem := range todos {
 			if todo, ok := todoItem.(map[string]any); ok {
 				content, _ := todo["content"].(string)
 				status, _ := todo["status"].(string)
 
 				if status == "completed" {
-					// Hide completed items entirely
+					// Skip completed items (we showed the last one above)
 					continue
 				} else if status == "in_progress" {
-					// Use filled circle for in-progress
-					_, _ = fmt.Fprintf(f.output, "⏺ %s\n", content)
+					// In-progress: prominent with empty checkbox
+					_, _ = fmt.Fprintf(f.output, "☐ %s\n", content)
 				} else {
-					// Use empty circle for pending
-					_, _ = fmt.Fprintf(f.output, "○ %s\n", content)
+					// Pending: dimmed with empty checkbox
+					_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☐ "+content))
 				}
 			}
 		}
