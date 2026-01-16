@@ -105,14 +105,16 @@ skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 
 ## Command-line Options
 
-| Flag        | Description                                                         |
-| ----------- | ------------------------------------------------------------------- |
-| `--help`    | Show help message                                                   |
-| `--version` | Show version information                                            |
-| `--verbose` | Show verbose output including raw JSON stream                       |
-| `--usage`   | Show token usage statistics after execution                         |
-| `--dry-run` | Show the command that would be executed without running it          |
-| `--prompt`  | Optional prompt to pass to Claude (default: uses skill description) |
+| Flag              | Description                                                         |
+| ----------------- | ------------------------------------------------------------------- |
+| `--help`          | Show help message                                                   |
+| `--version`       | Show version information                                            |
+| `--verbose`       | Show verbose output including raw JSON stream                       |
+| `--usage`         | Show token usage statistics after execution                         |
+| `--dry-run`       | Show the command that would be executed without running it          |
+| `-q`, `--quiet`   | Quiet mode - suppress all output except errors                      |
+| `--color`         | Control color output: `auto` (default), `always`, or `never`       |
+| `--prompt`        | Optional prompt to pass to Claude (default: uses skill description) |
 
 ## SKILL.md Format
 
