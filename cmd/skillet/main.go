@@ -293,11 +293,11 @@ func printHelp(w io.Writer, colorMode string) {
 	descStyle := lipgloss.NewStyle()
 
 	if useColors {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("6"))   // Cyan
+		titleStyle = titleStyle.Foreground(lipgloss.Color("6"))     // Cyan
 		sectionStyle = sectionStyle.Foreground(lipgloss.Color("3")) // Yellow
-		optionStyle = optionStyle.Foreground(lipgloss.Color("2"))  // Green
-		codeStyle = codeStyle.Foreground(lipgloss.Color("8"))      // Dim
-		descStyle = descStyle.Foreground(lipgloss.Color("7"))      // Light gray
+		optionStyle = optionStyle.Foreground(lipgloss.Color("2"))   // Green
+		codeStyle = codeStyle.Foreground(lipgloss.Color("8"))       // Dim
+		descStyle = descStyle.Foreground(lipgloss.Color("7"))       // Light gray
 	}
 
 	// Build help content
