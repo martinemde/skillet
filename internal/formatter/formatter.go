@@ -232,7 +232,11 @@ func (f *Formatter) Format(input io.Reader) error {
 func (f *Formatter) handleSystemMessage(msg Message) {
 	if msg.Subtype == "init" {
 		icon := f.applyColorToIcon(successIcon)
-		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
+		if f.skillName != "" {
+			_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
+		} else {
+			_, _ = fmt.Fprintf(f.output, "%s Starting\n", icon.String())
+		}
 	}
 }
 

@@ -1,105 +1,73 @@
 package executor
 
 import (
+	"io"
 	"strings"
 	"testing"
-
-	"github.com/martinemde/skillet/internal/parser"
 )
 
 func TestNew(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
-	}
-	prompt := "Test prompt"
-
-	exec := New(skill, prompt)
-
-	if exec.skill != skill {
-		t.Error("Executor should store the skill")
+	config := Config{
+		Prompt:       "Test prompt",
+		SystemPrompt: "System prompt content",
 	}
 
-	if exec.prompt != prompt {
-		t.Error("Executor should store the prompt")
+	exec := New(config, io.Discard, io.Discard)
+
+	if exec.config.Prompt != config.Prompt {
+		t.Error("Executor should store the config prompt")
+	}
+	if exec.config.SystemPrompt != config.SystemPrompt {
+		t.Error("Executor should store the system prompt")
 	}
 }
 
 func TestBuildArgs_Basic(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
-		Content:     "Test content",
+	config := Config{
+		Prompt:       "Test prompt",
+		SystemPrompt: "System prompt content",
 	}
 
-	exec := New(skill, "")
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// Check for required args
-	if args[0] != "-p" {
-		t.Error("First arg should be '-p'")
-	}
-
-	// Check for verbose flag (required for streaming)
-	hasVerbose := false
-	for _, arg := range args {
-		if arg == "--verbose" {
-			hasVerbose = true
-			break
+	// Check required args
+	expected := []string{"-p", "--verbose", "--output-format", "stream-json", "--permission-mode", "acceptEdits"}
+	for _, exp := range expected {
+		found := false
+		for _, arg := range args {
+			if arg == exp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Args should contain '%s'", exp)
 		}
 	}
-	if !hasVerbose {
-		t.Error("Args should contain '--verbose'")
-	}
 
-	// Check for output format
-	hasOutputFormat := false
-	for i, arg := range args {
-		if arg == "--output-format" && i+1 < len(args) && args[i+1] == "stream-json" {
-			hasOutputFormat = true
-			break
-		}
-	}
-	if !hasOutputFormat {
-		t.Error("Args should contain '--output-format stream-json'")
-	}
-
-	// Check for permission mode
-	hasPermissionMode := false
-	for i, arg := range args {
-		if arg == "--permission-mode" && i+1 < len(args) && args[i+1] == "acceptEdits" {
-			hasPermissionMode = true
-			break
-		}
-	}
-	if !hasPermissionMode {
-		t.Error("Args should contain '--permission-mode acceptEdits'")
-	}
-
-	// Check for append system prompt
-	hasAppendSystemPrompt := false
+	// Should have system prompt
+	hasSystemPrompt := false
 	for i, arg := range args {
 		if arg == "--append-system-prompt" && i+1 < len(args) {
-			hasAppendSystemPrompt = true
+			hasSystemPrompt = true
 			break
 		}
 	}
-	if !hasAppendSystemPrompt {
+	if !hasSystemPrompt {
 		t.Error("Args should contain '--append-system-prompt'")
 	}
 }
 
 func TestBuildArgs_WithModel(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
-		Model:       "claude-opus-4-5-20251101",
+	config := Config{
+		Prompt: "Test",
+		Model:  "claude-opus-4-5-20251101",
 	}
 
-	exec := New(skill, "")
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// Check for model arg
 	hasModel := false
 	for i, arg := range args {
 		if arg == "--model" && i+1 < len(args) && args[i+1] == "claude-opus-4-5-20251101" {
@@ -112,159 +80,138 @@ func TestBuildArgs_WithModel(t *testing.T) {
 	}
 }
 
-func TestBuildArgs_WithModelInherit(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
-		Model:       "inherit",
+func TestBuildArgs_NoModel(t *testing.T) {
+	config := Config{
+		Prompt: "Test",
+		Model:  "", // empty means no model flag
 	}
 
-	exec := New(skill, "")
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// Check that model arg is NOT included when set to "inherit"
-	for i, arg := range args {
+	for _, arg := range args {
 		if arg == "--model" {
-			t.Errorf("Args should not contain '--model' when model is 'inherit', found at index %d", i)
+			t.Error("Args should not contain '--model' when model is empty")
 		}
 	}
 }
 
 func TestBuildArgs_WithAllowedTools(t *testing.T) {
-	skill := &parser.Skill{
-		Name:         "test-skill",
-		Description:  "Test description",
+	config := Config{
+		Prompt:       "Test",
 		AllowedTools: "Read Write Bash(git:*)",
 	}
 
-	exec := New(skill, "")
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// Check for allowed-tools arg
-	hasAllowedTools := false
+	hasTools := false
 	for i, arg := range args {
 		if arg == "--allowed-tools" && i+1 < len(args) && args[i+1] == "Read Write Bash(git:*)" {
-			hasAllowedTools = true
+			hasTools = true
 			break
 		}
 	}
-	if !hasAllowedTools {
+	if !hasTools {
 		t.Error("Args should contain '--allowed-tools Read Write Bash(git:*)'")
 	}
 }
 
-func TestBuildArgs_WithPrompt(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
+func TestBuildArgs_PromptOnly(t *testing.T) {
+	config := Config{
+		Prompt: "Just a prompt",
 	}
 
-	prompt := "Custom user prompt"
-	exec := New(skill, prompt)
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// The last argument should be the prompt
-	lastArg := args[len(args)-1]
-	if lastArg != prompt {
-		t.Errorf("Last arg should be the prompt '%s', got '%s'", prompt, lastArg)
+	// Should NOT have --append-system-prompt when empty
+	for _, arg := range args {
+		if arg == "--append-system-prompt" {
+			t.Error("Args should not contain '--append-system-prompt' when system prompt is empty")
+		}
+	}
+
+	// Last arg should be the prompt
+	if args[len(args)-1] != "Just a prompt" {
+		t.Errorf("Last arg should be the prompt, got '%s'", args[len(args)-1])
 	}
 }
 
-func TestBuildArgs_WithoutPrompt(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description",
+func TestBuildArgs_CustomOutputFormat(t *testing.T) {
+	config := Config{
+		Prompt:       "Test",
+		OutputFormat: "text",
 	}
 
-	exec := New(skill, "")
+	exec := New(config, io.Discard, io.Discard)
 	args := exec.buildArgs()
 
-	// The last argument should be the description when no prompt is provided
-	lastArg := args[len(args)-1]
-	if lastArg != skill.Description {
-		t.Errorf("Last arg should be the description '%s', got '%s'", skill.Description, lastArg)
+	hasFormat := false
+	for i, arg := range args {
+		if arg == "--output-format" && i+1 < len(args) && args[i+1] == "text" {
+			hasFormat = true
+			break
+		}
+	}
+	if !hasFormat {
+		t.Error("Args should contain '--output-format text'")
 	}
 }
 
-func TestBuildSystemPrompt(t *testing.T) {
-	skill := &parser.Skill{
-		Name:        "test-skill",
-		Description: "Test description for the skill",
-		Content:     "Detailed instructions go here",
+func TestBuildArgs_CustomPermissionMode(t *testing.T) {
+	config := Config{
+		Prompt:         "Test",
+		PermissionMode: "plan",
 	}
 
-	exec := New(skill, "")
-	prompt := exec.buildSystemPrompt()
+	exec := New(config, io.Discard, io.Discard)
+	args := exec.buildArgs()
 
-	// Check that the prompt contains the skill name
-	if !strings.Contains(prompt, "test-skill") {
-		t.Error("System prompt should contain the skill name")
+	hasMode := false
+	for i, arg := range args {
+		if arg == "--permission-mode" && i+1 < len(args) && args[i+1] == "plan" {
+			hasMode = true
+			break
+		}
 	}
-
-	// Check that the prompt contains the description
-	if !strings.Contains(prompt, "Test description for the skill") {
-		t.Error("System prompt should contain the description")
-	}
-
-	// Check that the prompt contains the content
-	if !strings.Contains(prompt, "Detailed instructions go here") {
-		t.Error("System prompt should contain the content")
-	}
-}
-
-func TestBuildSystemPrompt_WithCompatibility(t *testing.T) {
-	skill := &parser.Skill{
-		Name:          "test-skill",
-		Description:   "Test description",
-		Compatibility: "Requires git and docker",
-		Content:       "Instructions",
-	}
-
-	exec := New(skill, "")
-	prompt := exec.buildSystemPrompt()
-
-	// Check that the prompt contains compatibility info
-	if !strings.Contains(prompt, "Compatibility:") {
-		t.Error("System prompt should contain compatibility section")
-	}
-
-	if !strings.Contains(prompt, "Requires git and docker") {
-		t.Error("System prompt should contain the compatibility text")
+	if !hasMode {
+		t.Error("Args should contain '--permission-mode plan'")
 	}
 }
 
 func TestGetCommand(t *testing.T) {
-	skill := &parser.Skill{
-		Name:         "test-skill",
-		Description:  "Test description",
+	config := Config{
+		Prompt:       "Test prompt",
+		SystemPrompt: "System content",
 		Model:        "claude-opus-4-5-20251101",
 		AllowedTools: "Read Write",
 	}
 
-	exec := New(skill, "Test prompt")
+	exec := New(config, io.Discard, io.Discard)
 	cmd := exec.GetCommand()
 
-	// Check that the command starts with "claude"
 	if !strings.HasPrefix(cmd, "claude ") {
 		t.Error("Command should start with 'claude '")
 	}
 
-	// Check that it contains expected flags
-	expectedFlags := []string{
-		"-p",
-		"--verbose",
-		"--output-format",
-		"stream-json",
-		"--permission-mode",
-		"acceptEdits",
-		"--model",
-		"claude-opus-4-5-20251101",
-		"--allowed-tools",
+	expectedParts := []string{"-p", "--verbose", "--model", "claude-opus-4-5-20251101", "--allowed-tools"}
+	for _, part := range expectedParts {
+		if !strings.Contains(cmd, part) {
+			t.Errorf("Command should contain '%s'", part)
+		}
+	}
+}
+
+func TestGetCommand_QuotesArgs(t *testing.T) {
+	config := Config{
+		Prompt: "prompt with spaces",
 	}
 
-	for _, flag := range expectedFlags {
-		if !strings.Contains(cmd, flag) {
-			t.Errorf("Command should contain '%s'", flag)
-		}
+	exec := New(config, io.Discard, io.Discard)
+	cmd := exec.GetCommand()
+
+	if !strings.Contains(cmd, `"prompt with spaces"`) {
+		t.Error("Command should quote arguments with spaces")
 	}
 }

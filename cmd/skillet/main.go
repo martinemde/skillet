@@ -113,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
 		quiet          = flags.Bool("q", false, "Quiet mode - suppress all output except errors")
-		prompt         = flags.String("prompt", "", "Optional prompt to pass to Claude (if not provided, uses skill description)")
+		prompt         = flags.String("prompt", "", "Prompt to pass to Claude (required if no skill provided)")
 		model          = flags.String("model", "", "Override model to use (overrides SKILL.md setting)")
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
@@ -135,54 +135,59 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	if *showHelp || len(posArgs) == 0 {
+	if *showHelp {
 		printHelp(stdout, *color)
 		return nil
 	}
 
-	skillPath := posArgs[0]
-
-	// Resolve the skill path (handles files, directories, .claude/skills shortcuts, and URLs)
-	result, err := resolver.Resolve(skillPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve skill: %w", err)
-	}
-
-	// Clean up temporary file if it was downloaded from a URL
-	if result.IsURL {
-		defer func() {
-			_ = os.Remove(result.Path)
-		}()
-	}
-
-	// Parse the SKILL.md file
+	// Parse skill if provided
 	var skill *parser.Skill
-	if result.BaseURL != "" {
-		// For URL-based skills, use the base URL as the base directory
-		skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
-	} else {
-		// For local files, use the default base directory (file's directory)
-		skill, err = parser.Parse(result.Path)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to parse skill file: %w", err)
+	if len(posArgs) > 0 {
+		result, err := resolver.Resolve(posArgs[0])
+		if err != nil {
+			return fmt.Errorf("failed to resolve skill: %w", err)
+		}
+		if result.IsURL {
+			defer func() { _ = os.Remove(result.Path) }()
+		}
+
+		if result.BaseURL != "" {
+			skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
+		} else {
+			skill, err = parser.Parse(result.Path)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse skill file: %w", err)
+		}
 	}
 
-	// Create executor with CLI overrides
-	exec := executor.New(skill, *prompt)
-	exec.SetOverrides(*model, *allowedTools, *permissionMode, *outputFormat)
+	// Require --prompt when no skill is provided
+	if skill == nil && *prompt == "" {
+		printHelp(stdout, *color)
+		return nil
+	}
 
-	// If dry-run, just print the command and exit
+	// Build executor config with resolved values
+	config := executor.Config{
+		Prompt:         resolvePrompt(*prompt, skill),
+		SystemPrompt:   buildSystemPrompt(skill),
+		Model:          resolveString(*model, skillModel(skill)),
+		AllowedTools:   resolveString(*allowedTools, skillAllowedTools(skill)),
+		PermissionMode: *permissionMode,
+		OutputFormat:   *outputFormat,
+	}
+
+	// Create pipe for output
+	pr, pw := io.Pipe()
+
+	// Create executor
+	exec := executor.New(config, pw, stderr)
+
+	// Handle dry-run
 	if *dryRun {
 		_, _ = fmt.Fprintf(stdout, "Would execute:\n%s\n", exec.GetCommand())
 		return nil
 	}
-
-	// Create a pipe to capture Claude's output
-	pr, pw := io.Pipe()
-
-	// Set executor output
-	exec.SetOutput(pw, stderr)
 
 	// Create formatter
 	// In quiet mode, discard all output (only program errors go to stderr)
@@ -198,7 +203,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Debug:           *debug,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
-		SkillName:       skill.Name,
+		SkillName:       skillName(skill),
 		Color:           *color,
 	})
 
@@ -306,6 +311,7 @@ func printHelp(w io.Writer, colorMode string) {
 	usage := lipgloss.JoinVertical(lipgloss.Left,
 		sectionStyle.Render("Usage:"),
 		"  skillet [options] <skill-path>",
+		"  skillet --prompt <prompt> [options]",
 	)
 
 	description := lipgloss.JoinVertical(lipgloss.Left,
@@ -313,6 +319,8 @@ func printHelp(w io.Writer, colorMode string) {
 		descStyle.Render("  Skillet parses SKILL.md files and executes them using the Claude CLI."),
 		descStyle.Render("  It reads the frontmatter configuration, interpolates variables, and"),
 		descStyle.Render("  invokes Claude with the appropriate arguments in headless mode."),
+		"",
+		descStyle.Render("  You can also run skillet without a skill by providing --prompt directly."),
 		"",
 		"  The skill path can be:",
 		"  • An exact file path "+codeStyle.Render("(e.g., path/to/SKILL.md)"),
@@ -330,7 +338,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
 		fmt.Sprintf("  %s           Show the command that would be executed without running it", optionStyle.Render("--dry-run")),
 		fmt.Sprintf("  %s, %s         Quiet mode - suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
-		fmt.Sprintf("  %s            Optional prompt to pass to Claude (default: uses skill description)", optionStyle.Render("--prompt")),
+		fmt.Sprintf("  %s            Prompt to pass to Claude (required if no skill provided)", optionStyle.Render("--prompt")),
 		fmt.Sprintf("  %s             Override model to use (overrides SKILL.md setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Override allowed tools (overrides SKILL.md setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Override permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
@@ -352,8 +360,11 @@ skillet skill-name
 # Run a skill from a URL
 skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 
-# Run with a custom prompt
-skillet --prompt "Analyze this code" skill-namg
+# Run with a custom prompt (with skill)
+skillet --prompt "Analyze this code" skill-name
+
+# Run with just a prompt (no skill)
+skillet --prompt "What is the weather today?"
 
 # Show what command would be executed
 skillet --dry-run skill-name
@@ -406,4 +417,59 @@ Your skill instructions go here...
 	)
 
 	_, _ = fmt.Fprintln(w, help)
+}
+
+// Helper functions for skill value extraction
+
+func skillName(s *parser.Skill) string {
+	if s == nil {
+		return ""
+	}
+	return s.Name
+}
+
+func skillModel(s *parser.Skill) string {
+	if s == nil || s.Model == "inherit" {
+		return ""
+	}
+	return s.Model
+}
+
+func skillAllowedTools(s *parser.Skill) string {
+	if s == nil {
+		return ""
+	}
+	return s.AllowedTools
+}
+
+func resolvePrompt(cliPrompt string, s *parser.Skill) string {
+	if cliPrompt != "" {
+		return cliPrompt
+	}
+	if s != nil {
+		return s.Description
+	}
+	return ""
+}
+
+func resolveString(override, fallback string) string {
+	if override != "" {
+		return override
+	}
+	return fallback
+}
+
+func buildSystemPrompt(s *parser.Skill) string {
+	if s == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s\n\n", s.Name))
+	sb.WriteString(fmt.Sprintf("%s\n\n", s.Description))
+	if s.Compatibility != "" {
+		sb.WriteString(fmt.Sprintf("**Compatibility:** %s\n\n", s.Compatibility))
+	}
+	sb.WriteString(s.Content)
+	return sb.String()
 }
