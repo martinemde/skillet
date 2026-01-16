@@ -103,6 +103,7 @@ type Config struct {
 	ShowUsage       bool
 	PassthroughMode bool   // If true, stream output directly without parsing
 	SkillName       string // Name of the skill being executed
+	Color           string // Color mode: "auto", "always", or "never"
 }
 
 // Formatter formats stream-json output from Claude CLI
@@ -113,6 +114,7 @@ type Formatter struct {
 	showUsage       bool
 	passthroughMode bool   // If true, stream output directly without parsing
 	skillName       string // Name of the skill being executed
+	color           string // Color mode: "auto", "always", or "never"
 	tools           []ToolOperation
 	startTime       time.Time
 	toolCallMap     map[string]int // Maps tool_use_id to index in tools slice
@@ -121,14 +123,25 @@ type Formatter struct {
 
 // New creates a new Formatter with the given configuration
 func New(cfg Config) *Formatter {
+	// Determine if we should use colors
+	useColors := shouldUseColors(cfg.Color)
+
 	// Initialize glamour markdown renderer with a nice style
-	// Use "auto" style which adapts to terminal background (light/dark)
-	mdRenderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(0), // No wrapping, let terminal handle it
-	)
-	if err != nil {
-		// Fallback to nil renderer if initialization fails
+	var mdRenderer *glamour.TermRenderer
+	var err error
+
+	if useColors {
+		// Use "auto" style which adapts to terminal background (light/dark)
+		mdRenderer, err = glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0), // No wrapping, let terminal handle it
+		)
+		if err != nil {
+			// Fallback to nil renderer if initialization fails
+			mdRenderer = nil
+		}
+	} else {
+		// No colors, use ASCII-only rendering
 		mdRenderer = nil
 	}
 
@@ -139,9 +152,32 @@ func New(cfg Config) *Formatter {
 		showUsage:       cfg.ShowUsage,
 		passthroughMode: cfg.PassthroughMode,
 		skillName:       cfg.SkillName,
+		color:           cfg.Color,
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
 		mdRenderer:      mdRenderer,
+	}
+}
+
+// shouldUseColors determines if colors should be used based on the color setting
+func shouldUseColors(colorMode string) bool {
+	switch colorMode {
+	case "always":
+		return true
+	case "never":
+		return false
+	case "auto":
+		// Check if output is a terminal
+		if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
+			// It's a terminal, check for NO_COLOR environment variable
+			if os.Getenv("NO_COLOR") != "" {
+				return false
+			}
+			return true
+		}
+		return false
+	default:
+		return true // Default to colors
 	}
 }
 
@@ -195,7 +231,8 @@ func (f *Formatter) Format(input io.Reader) error {
 // handleSystemMessage processes system-level messages
 func (f *Formatter) handleSystemMessage(msg Message) {
 	if msg.Subtype == "init" {
-		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), f.skillName)
+		icon := f.applyColorToIcon(successIcon)
+		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
 	}
 }
 
@@ -210,7 +247,8 @@ func (f *Formatter) handleAssistantMessage(msg Message) {
 		case "thinking":
 			// Display thinking blocks in verbose mode
 			if f.verbose && content.Text != "" {
-				_, _ = fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+content.Text))
+				style := f.applyColorToStyle(thinkingStyle)
+				_, _ = fmt.Fprintln(f.output, style.Render("💭 "+content.Text))
 				_, _ = fmt.Fprintln(f.output)
 			}
 
@@ -276,9 +314,11 @@ func (f *Formatter) handleResultMessage(msg Message) {
 	elapsed := time.Since(f.startTime)
 	_, _ = fmt.Fprintln(f.output)
 	if msg.IsError {
-		_, _ = fmt.Fprintln(f.output, errorIcon.String()+" Failed")
+		icon := f.applyColorToIcon(errorIcon)
+		_, _ = fmt.Fprintln(f.output, icon.String()+" Failed")
 	} else {
-		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), elapsed.Seconds())
+		icon := f.applyColorToIcon(successIcon)
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", icon.String(), elapsed.Seconds())
 	}
 }
 
@@ -403,6 +443,7 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 	case "empty":
 		icon = emptyIcon
 	}
+	icon = f.applyColorToIcon(icon)
 
 	// Format tool line (no indent)
 	line := fmt.Sprintf("%s %s", icon.String(), tool.Name)
@@ -410,7 +451,8 @@ func (f *Formatter) printToolOperation(tool ToolOperation) {
 		line += " " + tool.Target
 	}
 	if tool.Status == "error" && tool.Error != "" {
-		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
+		style := f.applyColorToStyle(dimStyle)
+		line += style.Render(fmt.Sprintf(" (%s)", tool.Error))
 	}
 	_, _ = fmt.Fprintln(f.output, line)
 
@@ -444,8 +486,18 @@ func (f *Formatter) printToolDetails(tool ToolOperation) {
 
 	// Only print if there's content
 	if content.Len() > 0 {
+		// Apply color to box style
+		boxStyle := toolBoxStyle
+		if !shouldUseColors(f.color) {
+			boxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				Padding(0, 1).
+				MarginLeft(2).
+				MarginTop(0).
+				MarginBottom(1)
+		}
 		// Wrap in styled box
-		boxed := toolBoxStyle.Render(strings.TrimRight(content.String(), "\n"))
+		boxed := boxStyle.Render(strings.TrimRight(content.String(), "\n"))
 		_, _ = fmt.Fprintln(f.output, boxed)
 	}
 }
@@ -462,7 +514,8 @@ func (f *Formatter) buildTruncatedLines(w *strings.Builder, text string, maxLine
 	if len(lines) > maxLines {
 		content := strings.Join(lines[:maxLines], "\n")
 		fmt.Fprintln(w, content)
-		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
+		style := f.applyColorToStyle(dimStyle)
+		fmt.Fprintln(w, style.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
 	} else {
 		fmt.Fprintln(w, text)
 	}
@@ -481,7 +534,8 @@ func (f *Formatter) buildReadOutput(w *strings.Builder, tool ToolOperation) {
 func (f *Formatter) buildWriteOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Status == "success" {
 		if filePath, ok := tool.Input["file_path"].(string); ok {
-			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ wrote to %s", filePath)))
+			style := f.applyColorToStyle(dimStyle)
+			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ wrote to %s", filePath)))
 		}
 	}
 }
@@ -513,7 +567,8 @@ func (f *Formatter) buildBashOutput(w *strings.Builder, tool ToolOperation) {
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", content)
 		rendered := f.renderMarkdown(resultBlock)
 		fmt.Fprint(w, rendered)
-		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
+		style := f.applyColorToStyle(dimStyle)
+		fmt.Fprintln(w, style.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
 	} else {
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", resultStr)
 		rendered := f.renderMarkdown(resultBlock)
@@ -556,6 +611,8 @@ func (f *Formatter) printTodoStatusLines(tool ToolOperation) {
 
 // buildGenericToolOutput writes basic input/output for other tools
 func (f *Formatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperation) {
+	style := f.applyColorToStyle(dimStyle)
+
 	// Show key input parameters
 	if len(tool.Input) > 0 {
 		for k, v := range tool.Input {
@@ -563,7 +620,7 @@ func (f *Formatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperatio
 			if len(vStr) > maxErrorDisplayLength {
 				vStr = vStr[:maxErrorDisplayLength-3] + "..."
 			}
-			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
+			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
 		}
 	}
 
@@ -571,7 +628,7 @@ func (f *Formatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperatio
 	if tool.Result != nil && tool.Status != "error" {
 		resultStr := f.extractResultText(tool.Result)
 		if resultStr != "" && len(resultStr) < maxGenericOutputLength {
-			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s", resultStr)))
+			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ %s", resultStr)))
 		}
 	}
 }
@@ -655,6 +712,24 @@ func (f *Formatter) renderMarkdown(text string) string {
 	return strings.TrimSpace(rendered)
 }
 
+// applyColorToIcon applies or removes color from an icon style based on color mode
+func (f *Formatter) applyColorToIcon(icon lipgloss.Style) lipgloss.Style {
+	if !shouldUseColors(f.color) {
+		// Return a plain style without color
+		return lipgloss.NewStyle().SetString(icon.Value())
+	}
+	return icon
+}
+
+// applyColorToStyle applies or removes color from a style based on color mode
+func (f *Formatter) applyColorToStyle(style lipgloss.Style) lipgloss.Style {
+	if !shouldUseColors(f.color) {
+		// Return a plain style without color, but preserve other properties like margin
+		return lipgloss.NewStyle()
+	}
+	return style
+}
+
 // printUsage prints token usage information in a styled table
 func (f *Formatter) printUsage(usage *Usage) {
 	// Build table rows
@@ -687,14 +762,19 @@ func (f *Formatter) printUsage(usage *Usage) {
 		}
 	}
 
-	// Create styled table
+	// Create styled table with color support
+	borderStyle := lipgloss.NewStyle()
+	if shouldUseColors(f.color) {
+		borderStyle = borderStyle.Foreground(lipgloss.Color("8"))
+	}
+
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))). // Dim border
+		BorderStyle(borderStyle).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if col == 0 {
 				// Metric name column - dim style
-				return dimStyle
+				return f.applyColorToStyle(dimStyle)
 			}
 			// Value column - normal style
 			return lipgloss.NewStyle()

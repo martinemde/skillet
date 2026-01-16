@@ -241,3 +241,152 @@ func TestRun_VerboseFlagAfterSkillName(t *testing.T) {
 		t.Errorf("Should show the claude command, got: %s", output)
 	}
 }
+
+func TestRun_QuietFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Test quiet flag with dry-run (should still show output in dry-run)
+	err := run([]string{"skillet", "--dry-run", "--quiet", "../../testdata/simple-skill/SKILL.md"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Dry-run output should still be shown even with quiet flag
+	if !strings.Contains(output, "Would execute:") {
+		t.Errorf("Dry-run should show output even with quiet flag, got: %s", output)
+	}
+}
+
+func TestRun_QuietFlagShortForm(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Test -q short form
+	err := run([]string{"skillet", "--dry-run", "-q", "../../testdata/simple-skill/SKILL.md"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Dry-run output should still be shown even with -q flag
+	if !strings.Contains(output, "Would execute:") {
+		t.Errorf("Dry-run should show output even with -q flag, got: %s", output)
+	}
+}
+
+func TestRun_ColorFlag(t *testing.T) {
+	tests := []struct {
+		name       string
+		colorValue string
+	}{
+		{"auto", "auto"},
+		{"always", "always"},
+		{"never", "never"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			err := run([]string{"skillet", "--dry-run", "--color=" + tt.colorValue, "../../testdata/simple-skill/SKILL.md"}, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("Run failed: %v", err)
+			}
+
+			output := stdout.String()
+			if !strings.Contains(output, "Would execute:") {
+				t.Errorf("Should work with --color=%s, got: %s", tt.colorValue, output)
+			}
+		})
+	}
+}
+
+func TestRun_ColorFlagHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Test that help shows color flag
+	err := run([]string{"skillet", "--help"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "--color") {
+		t.Errorf("Help should mention --color flag, got: %s", output)
+	}
+	if !strings.Contains(output, "--quiet") || !strings.Contains(output, "-q") {
+		t.Errorf("Help should mention --quiet/-q flag, got: %s", output)
+	}
+}
+
+func TestSeparateFlags_QuietFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedFlags   []string
+		expectedPosArgs []string
+	}{
+		{
+			name:            "quiet flag before skill",
+			args:            []string{"--quiet", "skill-name"},
+			expectedFlags:   []string{"--quiet"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "quiet flag after skill",
+			args:            []string{"skill-name", "--quiet"},
+			expectedFlags:   []string{"--quiet"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "q flag before skill",
+			args:            []string{"-q", "skill-name"},
+			expectedFlags:   []string{"-q"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "q flag after skill",
+			args:            []string{"skill-name", "-q"},
+			expectedFlags:   []string{"-q"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "color flag with value",
+			args:            []string{"--color", "never", "skill-name"},
+			expectedFlags:   []string{"--color", "never"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "color flag with equals",
+			args:            []string{"--color=always", "skill-name"},
+			expectedFlags:   []string{"--color=always"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flagArgs, posArgs := separateFlags(tt.args)
+
+			// Check flag args
+			if len(flagArgs) != len(tt.expectedFlags) {
+				t.Errorf("Expected %d flag args, got %d: %v", len(tt.expectedFlags), len(flagArgs), flagArgs)
+			}
+			for i, expected := range tt.expectedFlags {
+				if i >= len(flagArgs) || flagArgs[i] != expected {
+					t.Errorf("Expected flag arg[%d] = %q, got %q", i, expected, flagArgs[i])
+				}
+			}
+
+			// Check positional args
+			if len(posArgs) != len(tt.expectedPosArgs) {
+				t.Errorf("Expected %d positional args, got %d: %v", len(tt.expectedPosArgs), len(posArgs), posArgs)
+			}
+			for i, expected := range tt.expectedPosArgs {
+				if i >= len(posArgs) || posArgs[i] != expected {
+					t.Errorf("Expected positional arg[%d] = %q, got %q", i, expected, posArgs[i])
+				}
+			}
+		})
+	}
+}

@@ -20,6 +20,28 @@ import (
 
 const version = "0.1.0"
 
+// shouldUseColors determines if colors should be used based on the color setting
+func shouldUseColors(colorMode string) bool {
+	switch colorMode {
+	case "always":
+		return true
+	case "never":
+		return false
+	case "auto":
+		// Check if output is a terminal
+		if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
+			// It's a terminal, check for NO_COLOR environment variable
+			if os.Getenv("NO_COLOR") != "" {
+				return false
+			}
+			return true
+		}
+		return false
+	default:
+		return true // Default to colors
+	}
+}
+
 func main() {
 	if err := run(os.Args, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -61,7 +83,8 @@ func separateFlags(args []string) ([]string, []string) {
 					arg == "-verbose" || arg == "--verbose" ||
 					arg == "-debug" || arg == "--debug" ||
 					arg == "-usage" || arg == "--usage" ||
-					arg == "-dry-run" || arg == "--dry-run"
+					arg == "-dry-run" || arg == "--dry-run" ||
+					arg == "-q" || arg == "--quiet"
 
 				if !isBoolFlag {
 					// This is likely a flag that takes a value, so include the next arg
@@ -89,12 +112,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 		debug          = flags.Bool("debug", false, "Show raw stream JSON as it's received")
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
+		quiet          = flags.Bool("q", false, "Quiet mode - suppress all output except errors")
 		prompt         = flags.String("prompt", "", "Optional prompt to pass to Claude (if not provided, uses skill description)")
 		model          = flags.String("model", "", "Override model to use (overrides SKILL.md setting)")
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
+		color          = flags.String("color", "auto", "Control color output (auto, always, never)")
 	)
+	// Add alias for --quiet
+	flags.BoolVar(quiet, "quiet", false, "Quiet mode - suppress all output except errors")
 
 	// Separate flags from positional arguments to support flags in any position
 	flagArgs, posArgs := separateFlags(args[1:])
@@ -109,7 +136,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *showHelp || len(posArgs) == 0 {
-		printHelp(stdout)
+		printHelp(stdout, *color)
 		return nil
 	}
 
@@ -158,14 +185,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 	exec.SetOutput(pw, stderr)
 
 	// Create formatter
+	// In quiet mode, discard all output (only program errors go to stderr)
+	output := stdout
+	if *quiet {
+		output = io.Discard
+	}
+
 	// If user explicitly set --output-format, we're in passthrough mode
 	form := formatter.New(formatter.Config{
-		Output:          stdout,
+		Output:          output,
 		Verbose:         *verbose,
 		Debug:           *debug,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
 		SkillName:       skill.Name,
+		Color:           *color,
 	})
 
 	// Set up context with cancellation
@@ -218,14 +252,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func printHelp(w io.Writer) {
+func printHelp(w io.Writer, colorMode string) {
+	// Determine if we should use colors
+	useColors := shouldUseColors(colorMode)
+
 	// Initialize markdown renderer
-	mdRenderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(0),
-	)
-	if err != nil {
-		// Fallback to plain text if renderer fails
+	var mdRenderer *glamour.TermRenderer
+	var err error
+	if useColors {
+		mdRenderer, err = glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0),
+		)
+		if err != nil {
+			// Fallback to plain text if renderer fails
+			mdRenderer = nil
+		}
+	} else {
+		// No colors
 		mdRenderer = nil
 	}
 
@@ -241,26 +285,20 @@ func printHelp(w io.Writer) {
 		return strings.TrimSpace(rendered)
 	}
 
-	// Styles for help text
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6")). // Cyan
-		MarginBottom(1)
+	// Styles for help text (with conditional colors)
+	titleStyle := lipgloss.NewStyle().Bold(true).MarginBottom(1)
+	sectionStyle := lipgloss.NewStyle().Bold(true).MarginTop(1)
+	optionStyle := lipgloss.NewStyle()
+	codeStyle := lipgloss.NewStyle().Italic(true)
+	descStyle := lipgloss.NewStyle()
 
-	sectionStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("3")). // Yellow
-		MarginTop(1)
-
-	optionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("2")) // Green
-
-	codeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")). // Dim
-		Italic(true)
-
-	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("7")) // Light gray
+	if useColors {
+		titleStyle = titleStyle.Foreground(lipgloss.Color("6"))     // Cyan
+		sectionStyle = sectionStyle.Foreground(lipgloss.Color("3")) // Yellow
+		optionStyle = optionStyle.Foreground(lipgloss.Color("2"))   // Green
+		codeStyle = codeStyle.Foreground(lipgloss.Color("8"))       // Dim
+		descStyle = descStyle.Foreground(lipgloss.Color("7"))       // Light gray
+	}
 
 	// Build help content
 	title := titleStyle.Render("skillet - Run SKILL.md files with Claude CLI")
@@ -291,11 +329,13 @@ func printHelp(w io.Writer) {
 		fmt.Sprintf("  %s             Show raw stream JSON as it's received", optionStyle.Render("--debug")),
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
 		fmt.Sprintf("  %s           Show the command that would be executed without running it", optionStyle.Render("--dry-run")),
+		fmt.Sprintf("  %s, %s         Quiet mode - suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
 		fmt.Sprintf("  %s            Optional prompt to pass to Claude (default: uses skill description)", optionStyle.Render("--prompt")),
 		fmt.Sprintf("  %s             Override model to use (overrides SKILL.md setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Override allowed tools (overrides SKILL.md setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Override permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
 		fmt.Sprintf("  %s     Override output format (default: stream-json)", optionStyle.Render("--output-format")),
+		fmt.Sprintf("  %s            Control color output (auto, always, never)", optionStyle.Render("--color")),
 	)
 
 	// Render examples with markdown
@@ -348,10 +388,11 @@ Your skill instructions go here...
 		renderMarkdown(skillFormatExample),
 	)
 
-	footer := "\nFor more information, see: " + lipgloss.NewStyle().
-		Foreground(lipgloss.Color("4")).
-		Underline(true).
-		Render("https://agentskills.io")
+	footerLinkStyle := lipgloss.NewStyle().Underline(true)
+	if useColors {
+		footerLinkStyle = footerLinkStyle.Foreground(lipgloss.Color("4"))
+	}
+	footer := "\nFor more information, see: " + footerLinkStyle.Render("https://agentskills.io")
 
 	// Combine all sections
 	help := lipgloss.JoinVertical(lipgloss.Left,
