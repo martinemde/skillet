@@ -2,7 +2,7 @@
 name: test-skill
 description: A simple test skill that creates a greeting file
 allowed-tools: Write Read
-model: claude-sonnet-4-5-20250929
+model: sonnet
 ---
 
 # Test Skill
