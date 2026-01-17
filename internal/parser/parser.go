@@ -11,6 +11,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	// baseDirRegex matches {baseDir} variable references
+	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
+	// nameRegex validates skill name format
+	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+)
+
 // Skill represents a parsed SKILL.md file
 type Skill struct {
 	// Frontmatter fields
@@ -129,8 +136,7 @@ func parseFrontmatter(data string) (*Skill, error) {
 // interpolateVariables replaces variables like {baseDir} with actual values
 func interpolateVariables(content, baseDir string) string {
 	// Replace {baseDir} with the actual base directory
-	re := regexp.MustCompile(`\{baseDir\}`)
-	return re.ReplaceAllString(content, baseDir)
+	return baseDirRegex.ReplaceAllString(content, baseDir)
 }
 
 // Validate checks that required fields are present and valid
@@ -140,7 +146,6 @@ func (s *Skill) Validate() error {
 	}
 
 	// Validate name format
-	nameRegex := regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 	if !nameRegex.MatchString(s.Name) {
 		return fmt.Errorf("invalid name format: must be lowercase letters, numbers, and hyphens, not starting/ending with hyphen")
 	}

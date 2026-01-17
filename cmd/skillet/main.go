@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/martinemde/skillet/internal/color"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/parser"
@@ -20,26 +21,22 @@ import (
 
 const version = "0.1.0"
 
-// shouldUseColors determines if colors should be used based on the color setting
-func shouldUseColors(colorMode string) bool {
-	switch colorMode {
-	case "always":
-		return true
-	case "never":
-		return false
-	case "auto":
-		// Check if output is a terminal
-		if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
-			// It's a terminal, check for NO_COLOR environment variable
-			if os.Getenv("NO_COLOR") != "" {
-				return false
-			}
-			return true
-		}
-		return false
-	default:
-		return true // Default to colors
-	}
+// boolFlags contains all flags that don't take a value
+var boolFlags = map[string]bool{
+	"-version":  true,
+	"--version": true,
+	"-help":     true,
+	"--help":    true,
+	"-verbose":  true,
+	"--verbose": true,
+	"-debug":    true,
+	"--debug":   true,
+	"-usage":    true,
+	"--usage":   true,
+	"-dry-run":  true,
+	"--dry-run": true,
+	"-q":        true,
+	"--quiet":   true,
 }
 
 func main() {
@@ -78,15 +75,7 @@ func separateFlags(args []string) ([]string, []string) {
 			// it might be the flag's value. We include it with the flags.
 			if !hasEquals && i+1 < len(args) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
 				// Check if this is a boolean flag (these don't take values)
-				isBoolFlag := arg == "-version" || arg == "--version" ||
-					arg == "-help" || arg == "--help" ||
-					arg == "-verbose" || arg == "--verbose" ||
-					arg == "-debug" || arg == "--debug" ||
-					arg == "-usage" || arg == "--usage" ||
-					arg == "-dry-run" || arg == "--dry-run" ||
-					arg == "-q" || arg == "--quiet"
-
-				if !isBoolFlag {
+				if !boolFlags[arg] {
 					// This is likely a flag that takes a value, so include the next arg
 					i++
 					flagArgs = append(flagArgs, args[i])
@@ -259,7 +248,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 func printHelp(w io.Writer, colorMode string) {
 	// Determine if we should use colors
-	useColors := shouldUseColors(colorMode)
+	useColors := color.ShouldUseColors(colorMode)
 
 	// Initialize markdown renderer
 	var mdRenderer *glamour.TermRenderer
