@@ -310,3 +310,25 @@ func TestParse_YAMLSyntaxError(t *testing.T) {
 		t.Errorf("Expected 'failed to parse YAML frontmatter' error, got: %v", err)
 	}
 }
+
+func TestParseWithBaseDir_ExplicitBaseDir(t *testing.T) {
+	customBaseDir := "/custom/base/directory"
+	skill, err := ParseWithBaseDir("../../testdata/interpolation-skill/SKILL.md", customBaseDir)
+	if err != nil {
+		t.Fatalf("Failed to parse with explicit base dir: %v", err)
+	}
+
+	// Verify that the custom base directory is used
+	if skill.BaseDir != customBaseDir {
+		t.Errorf("Expected BaseDir '%s', got '%s'", customBaseDir, skill.BaseDir)
+	}
+
+	// Verify that interpolation uses the custom base directory
+	if !strings.Contains(skill.Content, customBaseDir) {
+		t.Errorf("Content should contain custom base directory '%s'", customBaseDir)
+	}
+
+	if !strings.Contains(skill.Content, customBaseDir+"/config.json") {
+		t.Errorf("Content should contain '%s/config.json'", customBaseDir)
+	}
+}
