@@ -299,3 +299,14 @@ func TestInterpolateVariables(t *testing.T) {
 		t.Errorf("Expected '%s', got '%s'", expected, result)
 	}
 }
+
+func TestParse_YAMLSyntaxError(t *testing.T) {
+	_, err := Parse("../../testdata/yaml-syntax-error/SKILL.md")
+	if err == nil {
+		t.Fatal("Expected error for malformed YAML, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to parse YAML frontmatter") {
+		t.Errorf("Expected 'failed to parse YAML frontmatter' error, got: %v", err)
+	}
+}
