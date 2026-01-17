@@ -6,130 +6,86 @@ import (
 	"io"
 	"os/exec"
 	"strings"
-
-	"github.com/martinemde/skillet/internal/parser"
 )
 
-// Executor executes the Claude CLI with the parsed skill
-type Executor struct {
-	skill  *parser.Skill
-	prompt string
-	stdout io.Writer
-	stderr io.Writer
-	// CLI overrides (empty string means use default/SKILL.md value)
-	modelOverride          string
-	allowedToolsOverride   string
-	permissionModeOverride string
-	outputFormatOverride   string
+// Config holds the final resolved configuration for executing Claude CLI.
+// All values should be resolved before creating the executor.
+type Config struct {
+	SystemPrompt   string // appended to system prompt; empty means none
+	Prompt         string // user prompt to send
+	Model          string // empty means use default
+	AllowedTools   string // empty means no restriction
+	PermissionMode string // empty defaults to "acceptEdits"
+	OutputFormat   string // empty defaults to "stream-json"
 }
 
-// New creates a new Executor for the given skill
-func New(skill *parser.Skill, prompt string) *Executor {
+// Executor executes the Claude CLI
+type Executor struct {
+	config Config
+	stdout io.Writer
+	stderr io.Writer
+}
+
+// New creates a new Executor
+func New(config Config, stdout, stderr io.Writer) *Executor {
 	return &Executor{
-		skill:  skill,
-		prompt: prompt,
+		config: config,
+		stdout: stdout,
+		stderr: stderr,
 	}
 }
 
-// SetOutput sets the stdout and stderr writers
-func (e *Executor) SetOutput(stdout, stderr io.Writer) {
-	e.stdout = stdout
-	e.stderr = stderr
-}
-
-// SetOverrides sets CLI flag overrides that take precedence over SKILL.md settings
-func (e *Executor) SetOverrides(model, allowedTools, permissionMode, outputFormat string) {
-	e.modelOverride = model
-	e.allowedToolsOverride = allowedTools
-	e.permissionModeOverride = permissionMode
-	e.outputFormatOverride = outputFormat
-}
-
-// Execute runs the Claude CLI with the skill configuration
+// Execute runs the Claude CLI
 func (e *Executor) Execute(ctx context.Context) error {
-	args := e.buildArgs()
-
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd := exec.CommandContext(ctx, "claude", e.buildArgs()...)
 	cmd.Stdout = e.stdout
 	cmd.Stderr = e.stderr
-
 	return cmd.Run()
 }
 
 // buildArgs constructs the command-line arguments for the Claude CLI
 func (e *Executor) buildArgs() []string {
-	args := []string{"-p"} // Print mode
-
-	// Add verbose flag (required for streaming to work properly in print mode)
-	args = append(args, "--verbose")
-
-	// Add output format (CLI override > default)
-	outputFormat := "stream-json"
-	if e.outputFormatOverride != "" {
-		outputFormat = e.outputFormatOverride
-	}
-	args = append(args, "--output-format", outputFormat)
-
-	// Add permission mode (CLI override > default)
-	permissionMode := "acceptEdits"
-	if e.permissionModeOverride != "" {
-		permissionMode = e.permissionModeOverride
-	}
-	args = append(args, "--permission-mode", permissionMode)
-
-	// Add model if specified (CLI override > SKILL.md > no model)
-	if e.modelOverride != "" {
-		args = append(args, "--model", e.modelOverride)
-	} else if e.skill.Model != "" && e.skill.Model != "inherit" {
-		args = append(args, "--model", e.skill.Model)
+	args := []string{
+		"-p",
+		"--verbose",
+		"--output-format", e.outputFormat(),
+		"--permission-mode", e.permissionMode(),
 	}
 
-	// Add allowed tools if specified (CLI override > SKILL.md > no tools)
-	if e.allowedToolsOverride != "" {
-		args = append(args, "--allowed-tools", e.allowedToolsOverride)
-	} else if e.skill.AllowedTools != "" {
-		args = append(args, "--allowed-tools", e.skill.AllowedTools)
+	if e.config.Model != "" {
+		args = append(args, "--model", e.config.Model)
 	}
 
-	// Add system prompt with the skill content
-	// We use --append-system-prompt to add the skill instructions
-	// while keeping Claude's default capabilities
-	systemPrompt := e.buildSystemPrompt()
-	args = append(args, "--append-system-prompt", systemPrompt)
+	if e.config.AllowedTools != "" {
+		args = append(args, "--allowed-tools", e.config.AllowedTools)
+	}
 
-	// Add the user prompt (if any)
-	if e.prompt != "" {
-		args = append(args, e.prompt)
-	} else {
-		// If no prompt is provided, use the skill description as the prompt
-		args = append(args, e.skill.Description)
+	if e.config.SystemPrompt != "" {
+		args = append(args, "--append-system-prompt", e.config.SystemPrompt)
+	}
+
+	if e.config.Prompt != "" {
+		args = append(args, e.config.Prompt)
 	}
 
 	return args
 }
 
-// buildSystemPrompt constructs the system prompt from the skill content
-func (e *Executor) buildSystemPrompt() string {
-	var sb strings.Builder
-
-	// Add skill header
-	sb.WriteString(fmt.Sprintf("# %s\n\n", e.skill.Name))
-
-	// Add description
-	sb.WriteString(fmt.Sprintf("%s\n\n", e.skill.Description))
-
-	// Add compatibility info if present
-	if e.skill.Compatibility != "" {
-		sb.WriteString(fmt.Sprintf("**Compatibility:** %s\n\n", e.skill.Compatibility))
+func (e *Executor) outputFormat() string {
+	if e.config.OutputFormat != "" {
+		return e.config.OutputFormat
 	}
-
-	// Add the skill content
-	sb.WriteString(e.skill.Content)
-
-	return sb.String()
+	return "stream-json"
 }
 
-// GetCommand returns the command string that would be executed (for debugging)
+func (e *Executor) permissionMode() string {
+	if e.config.PermissionMode != "" {
+		return e.config.PermissionMode
+	}
+	return "acceptEdits"
+}
+
+// GetCommand returns the command string that would be executed (for dry-run)
 func (e *Executor) GetCommand() string {
 	args := e.buildArgs()
 	quoted := make([]string, len(args))
