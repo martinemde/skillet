@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/martinemde/skillet/internal/color"
 )
 
 // Message represents different types of messages in the stream
@@ -124,7 +125,7 @@ type Formatter struct {
 // New creates a new Formatter with the given configuration
 func New(cfg Config) *Formatter {
 	// Determine if we should use colors
-	useColors := shouldUseColors(cfg.Color)
+	useColors := color.ShouldUseColors(cfg.Color)
 
 	// Initialize glamour markdown renderer with a nice style
 	var mdRenderer *glamour.TermRenderer
@@ -156,28 +157,6 @@ func New(cfg Config) *Formatter {
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
 		mdRenderer:      mdRenderer,
-	}
-}
-
-// shouldUseColors determines if colors should be used based on the color setting
-func shouldUseColors(colorMode string) bool {
-	switch colorMode {
-	case "always":
-		return true
-	case "never":
-		return false
-	case "auto":
-		// Check if output is a terminal
-		if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
-			// It's a terminal, check for NO_COLOR environment variable
-			if os.Getenv("NO_COLOR") != "" {
-				return false
-			}
-			return true
-		}
-		return false
-	default:
-		return true // Default to colors
 	}
 }
 
@@ -492,7 +471,7 @@ func (f *Formatter) printToolDetails(tool ToolOperation) {
 	if content.Len() > 0 {
 		// Apply color to box style
 		boxStyle := toolBoxStyle
-		if !shouldUseColors(f.color) {
+		if !color.ShouldUseColors(f.color) {
 			boxStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				Padding(0, 1).
@@ -734,7 +713,7 @@ func (f *Formatter) renderMarkdown(text string) string {
 
 // applyColorToIcon applies or removes color from an icon style based on color mode
 func (f *Formatter) applyColorToIcon(icon lipgloss.Style) lipgloss.Style {
-	if !shouldUseColors(f.color) {
+	if !color.ShouldUseColors(f.color) {
 		// Return a plain style without color
 		return lipgloss.NewStyle().SetString(icon.Value())
 	}
@@ -743,7 +722,7 @@ func (f *Formatter) applyColorToIcon(icon lipgloss.Style) lipgloss.Style {
 
 // applyColorToStyle applies or removes color from a style based on color mode
 func (f *Formatter) applyColorToStyle(style lipgloss.Style) lipgloss.Style {
-	if !shouldUseColors(f.color) {
+	if !color.ShouldUseColors(f.color) {
 		// Return a plain style without color, but preserve other properties like margin
 		return lipgloss.NewStyle()
 	}
@@ -784,7 +763,7 @@ func (f *Formatter) printUsage(usage *Usage) {
 
 	// Create styled table with color support
 	borderStyle := lipgloss.NewStyle()
-	if shouldUseColors(f.color) {
+	if color.ShouldUseColors(f.color) {
 		borderStyle = borderStyle.Foreground(lipgloss.Color("8"))
 	}
 

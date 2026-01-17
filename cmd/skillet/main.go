@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/martinemde/skillet/internal/color"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/parser"
@@ -19,28 +20,6 @@ import (
 )
 
 const version = "0.1.0"
-
-// shouldUseColors determines if colors should be used based on the color setting
-func shouldUseColors(colorMode string) bool {
-	switch colorMode {
-	case "always":
-		return true
-	case "never":
-		return false
-	case "auto":
-		// Check if output is a terminal
-		if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
-			// It's a terminal, check for NO_COLOR environment variable
-			if os.Getenv("NO_COLOR") != "" {
-				return false
-			}
-			return true
-		}
-		return false
-	default:
-		return true // Default to colors
-	}
-}
 
 func main() {
 	if err := run(os.Args, os.Stdout, os.Stderr); err != nil {
@@ -259,7 +238,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 func printHelp(w io.Writer, colorMode string) {
 	// Determine if we should use colors
-	useColors := shouldUseColors(colorMode)
+	useColors := color.ShouldUseColors(colorMode)
 
 	// Initialize markdown renderer
 	var mdRenderer *glamour.TermRenderer
