@@ -581,3 +581,84 @@ func TestFormat_TodoWrite_OnlyPending(t *testing.T) {
 		t.Errorf("Output should not contain completed marker for pending tasks, got: %s", result)
 	}
 }
+
+func TestStripSystemReminders_Basic(t *testing.T) {
+	input := "Some text <system-reminder>This is a reminder</system-reminder> more text"
+	expected := "Some text \n more text"
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_Multiple(t *testing.T) {
+	input := "First <system-reminder>Reminder 1</system-reminder> middle <system-reminder>Reminder 2</system-reminder> last"
+	expected := "First \n middle \n last"
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_UnclosedTag(t *testing.T) {
+	input := "Some text <system-reminder>This reminder has no closing tag"
+	expected := "Some text "
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_NestedContent(t *testing.T) {
+	// Test with nested-looking content (not actual nested tags, but content that looks like it)
+	input := "Text <system-reminder>Reminder with <tags> inside</system-reminder> end"
+	expected := "Text \n end"
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_WithNewlines(t *testing.T) {
+	input := "First line\n<system-reminder>\nMultiline reminder\nwith content\n</system-reminder>\nLast line"
+	expected := "First line\nLast line"
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_NoReminders(t *testing.T) {
+	input := "Just some plain text without any reminders"
+	expected := input
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_EmptyString(t *testing.T) {
+	input := ""
+	expected := ""
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestStripSystemReminders_OnlyReminder(t *testing.T) {
+	input := "<system-reminder>Only a reminder</system-reminder>"
+	expected := ""
+	result := stripSystemReminders(input)
+
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
