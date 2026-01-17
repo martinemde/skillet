@@ -21,6 +21,24 @@ import (
 
 const version = "0.1.0"
 
+// boolFlags contains all flags that don't take a value
+var boolFlags = map[string]bool{
+	"-version":  true,
+	"--version": true,
+	"-help":     true,
+	"--help":    true,
+	"-verbose":  true,
+	"--verbose": true,
+	"-debug":    true,
+	"--debug":   true,
+	"-usage":    true,
+	"--usage":   true,
+	"-dry-run":  true,
+	"--dry-run": true,
+	"-q":        true,
+	"--quiet":   true,
+}
+
 func main() {
 	if err := run(os.Args, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -57,15 +75,7 @@ func separateFlags(args []string) ([]string, []string) {
 			// it might be the flag's value. We include it with the flags.
 			if !hasEquals && i+1 < len(args) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
 				// Check if this is a boolean flag (these don't take values)
-				isBoolFlag := arg == "-version" || arg == "--version" ||
-					arg == "-help" || arg == "--help" ||
-					arg == "-verbose" || arg == "--verbose" ||
-					arg == "-debug" || arg == "--debug" ||
-					arg == "-usage" || arg == "--usage" ||
-					arg == "-dry-run" || arg == "--dry-run" ||
-					arg == "-q" || arg == "--quiet"
-
-				if !isBoolFlag {
+				if !boolFlags[arg] {
 					// This is likely a flag that takes a value, so include the next arg
 					i++
 					flagArgs = append(flagArgs, args[i])
