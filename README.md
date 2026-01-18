@@ -62,38 +62,13 @@ go install github.com/martinemde/skillet/cmd/skillet@latest
 
 Download the latest release for your platform from the [releases page](https://github.com/martinemde/skillet/releases):
 
-```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Darwin_arm64.tar.gz | tar xz
-
-# macOS (Intel)
-curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Darwin_x86_64.tar.gz | tar xz
-
-# Linux (x86_64)
-curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Linux_x86_64.tar.gz | tar xz
-
-# Linux (ARM64)
-curl -L https://github.com/martinemde/skillet/releases/latest/download/skillet_Linux_arm64.tar.gz | tar xz
-
-# Move to your PATH
-mv skillet ~/.local/bin/
-```
-
-### Build from source
-
-```bash
-git clone https://github.com/martinemde/skillet.git
-cd skillet
-go build -o skillet ./cmd/skillet
-```
-
 ## Usage
 
 ```bash
 # Direct file or path containing a SKILL.md
 skillet path/skillname[/SKILL.md]
 
-# Skill name shortcut (looks in all .claude/skills/<name>/SKILL.md paths)
+# Skill name shortcut (looks in all .claude/skills/<skill-name>/SKILL.md paths)
 skillet skill-name
 
 # Remote URL
