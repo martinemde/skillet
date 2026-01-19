@@ -362,6 +362,12 @@ func TestSeparateFlags_QuietFlag(t *testing.T) {
 			expectedFlags:   []string{"--color=always"},
 			expectedPosArgs: []string{"skill-name"},
 		},
+		{
+			name:            "list flag",
+			args:            []string{"--list"},
+			expectedFlags:   []string{"--list"},
+			expectedPosArgs: []string{},
+		},
 	}
 
 	for _, tt := range tests {
@@ -388,5 +394,35 @@ func TestSeparateFlags_QuietFlag(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRun_List(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--list"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Should show the "Available Skills" header
+	if !strings.Contains(output, "Available Skills") {
+		t.Errorf("List output should contain 'Available Skills', got: %s", output)
+	}
+}
+
+func TestRun_List_WithColorNever(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--list", "--color=never"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Should show the "Available Skills" header
+	if !strings.Contains(output, "Available Skills") {
+		t.Errorf("List output should contain 'Available Skills', got: %s", output)
 	}
 }
