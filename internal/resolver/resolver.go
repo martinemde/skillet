@@ -15,19 +15,32 @@ const (
 	skillFileName  = "SKILL.md"
 )
 
+// ResourceType indicates what type of resource was resolved
+type ResourceType int
+
+const (
+	// ResourceTypeSkill indicates the resolved resource is a skill (SKILL.md)
+	ResourceTypeSkill ResourceType = iota
+	// ResourceTypeCommand indicates the resolved resource is a command (.md file)
+	ResourceTypeCommand
+)
+
 // ResolveResult contains the resolved path and metadata
 type ResolveResult struct {
-	Path    string // Absolute path to the SKILL.md file
-	IsURL   bool   // True if the path was resolved from a URL
-	BaseURL string // Base URL for URL-based skills (empty for local files)
+	Path    string       // Absolute path to the resolved file
+	IsURL   bool         // True if the path was resolved from a URL
+	BaseURL string       // Base URL for URL-based resources (empty for local files)
+	Type    ResourceType // Type of resource (skill or command)
 }
 
-// Resolve takes a path argument and resolves it to a SKILL.md file
+// Resolve takes a path argument and resolves it to a SKILL.md or command file
 // Resolution order:
 // 1. If URL: download and validate
 // 2. If exact file path exists: use it
 // 3. If directory with SKILL.md exists: use it
-// 4. If bare word: look in .claude/skills/<name>/SKILL.md, then $HOME/.claude/skills/<name>/SKILL.md
+// 4. If bare word: look for skills first, then commands:
+//   - .claude/skills/<name>/SKILL.md, $HOME/.claude/skills/<name>/SKILL.md
+//   - .claude/commands/<name>.md, $HOME/.claude/commands/<name>.md
 func Resolve(path string) (*ResolveResult, error) {
 	// Check if it's a URL
 	if isURL(path) {
@@ -42,7 +55,12 @@ func Resolve(path string) (*ResolveResult, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to get absolute path: %w", err)
 			}
-			return &ResolveResult{Path: absPath}, nil
+			// Determine type based on filename
+			resourceType := ResourceTypeCommand
+			if filepath.Base(absPath) == skillFileName {
+				resourceType = ResourceTypeSkill
+			}
+			return &ResolveResult{Path: absPath, Type: resourceType}, nil
 		}
 		// It's a directory, try appending SKILL.md
 		skillPath := filepath.Join(path, skillFileName)
@@ -51,12 +69,15 @@ func Resolve(path string) (*ResolveResult, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to get absolute path: %w", err)
 			}
-			return &ResolveResult{Path: absPath}, nil
+			return &ResolveResult{Path: absPath, Type: ResourceTypeSkill}, nil
 		}
 	}
 
 	// Check if it's a bare word (no path separators)
 	if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
+		homeDir, _ := os.UserHomeDir()
+
+		// Try skills first
 		// Try .claude/skills/<name>/SKILL.md in working directory
 		claudeSkillPath := filepath.Join(".claude", "skills", path, skillFileName)
 		if _, err := os.Stat(claudeSkillPath); err == nil {
@@ -64,24 +85,46 @@ func Resolve(path string) (*ResolveResult, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to get absolute path: %w", err)
 			}
-			return &ResolveResult{Path: absPath}, nil
+			return &ResolveResult{Path: absPath, Type: ResourceTypeSkill}, nil
 		}
 
 		// Try $HOME/.claude/skills/<name>/SKILL.md
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
+		if homeDir != "" {
 			homeSkillPath := filepath.Join(homeDir, ".claude", "skills", path, skillFileName)
 			if _, err := os.Stat(homeSkillPath); err == nil {
 				absPath, err := filepath.Abs(homeSkillPath)
 				if err != nil {
 					return nil, fmt.Errorf("failed to get absolute path: %w", err)
 				}
-				return &ResolveResult{Path: absPath}, nil
+				return &ResolveResult{Path: absPath, Type: ResourceTypeSkill}, nil
+			}
+		}
+
+		// Try commands
+		// Try .claude/commands/<name>.md in working directory
+		claudeCommandPath := filepath.Join(".claude", "commands", path+".md")
+		if _, err := os.Stat(claudeCommandPath); err == nil {
+			absPath, err := filepath.Abs(claudeCommandPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get absolute path: %w", err)
+			}
+			return &ResolveResult{Path: absPath, Type: ResourceTypeCommand}, nil
+		}
+
+		// Try $HOME/.claude/commands/<name>.md
+		if homeDir != "" {
+			homeCommandPath := filepath.Join(homeDir, ".claude", "commands", path+".md")
+			if _, err := os.Stat(homeCommandPath); err == nil {
+				absPath, err := filepath.Abs(homeCommandPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get absolute path: %w", err)
+				}
+				return &ResolveResult{Path: absPath, Type: ResourceTypeCommand}, nil
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("skill not found: %s (tried exact path, directory with SKILL.md, .claude/skills/<name>/SKILL.md, and $HOME/.claude/skills/<name>/SKILL.md)", path)
+	return nil, fmt.Errorf("skill or command not found: %s (tried exact path, directory with SKILL.md, .claude/skills/<name>/SKILL.md, $HOME/.claude/skills/<name>/SKILL.md, .claude/commands/<name>.md, and $HOME/.claude/commands/<name>.md)", path)
 }
 
 // isURL checks if a string is a valid HTTP(S) URL
@@ -157,10 +200,19 @@ func resolveURL(urlStr string) (*ResolveResult, error) {
 	// Get the base URL (directory containing the file)
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host + filepath.Dir(parsedURL.Path)
 
+	// Determine type based on filename in URL (default to skill for URL-based)
+	resourceType := ResourceTypeSkill
+	urlPath := parsedURL.Path
+	if !strings.HasSuffix(strings.ToUpper(urlPath), "/SKILL.MD") && strings.HasSuffix(strings.ToLower(urlPath), ".md") {
+		// It's an .md file but not SKILL.md, treat as command
+		resourceType = ResourceTypeCommand
+	}
+
 	return &ResolveResult{
 		Path:    tmpFile.Name(),
 		IsURL:   true,
 		BaseURL: baseURL,
+		Type:    resourceType,
 	}, nil
 }
 

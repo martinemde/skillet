@@ -205,8 +205,121 @@ func TestResolve_BareWordNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent skill")
 	}
 
-	if !strings.Contains(err.Error(), "skill not found") {
-		t.Errorf("expected 'skill not found' error, got: %v", err)
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error, got: %v", err)
+	}
+}
+
+func TestResolve_BareWord_Command(t *testing.T) {
+	// Create .claude/commands/<name>.md structure
+	claudeDir := filepath.Join(".", ".claude", "commands")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.RemoveAll(".claude")
+	}()
+
+	commandFile := filepath.Join(claudeDir, "test-command.md")
+	if err := os.WriteFile(commandFile, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Resolve("test-command")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.IsURL {
+		t.Error("expected IsURL to be false")
+	}
+
+	if result.Type != ResourceTypeCommand {
+		t.Errorf("expected ResourceTypeCommand, got %d", result.Type)
+	}
+
+	if !strings.Contains(result.Path, ".claude") {
+		t.Errorf("expected path to contain .claude, got %s", result.Path)
+	}
+
+	if !strings.HasSuffix(result.Path, ".md") {
+		t.Errorf("expected path to end with .md, got %s", result.Path)
+	}
+}
+
+func TestResolve_BareWord_SkillPrioritizedOverCommand(t *testing.T) {
+	// Create both skill and command with same name
+	// Skill should take priority
+
+	// Create skill
+	skillDir := filepath.Join(".", ".claude", "skills", "priority-test-2")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.RemoveAll(".claude")
+	}()
+
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("skill content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create command
+	commandDir := filepath.Join(".", ".claude", "commands")
+	if err := os.MkdirAll(commandDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	commandFile := filepath.Join(commandDir, "priority-test-2.md")
+	if err := os.WriteFile(commandFile, []byte("command content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Resolve("priority-test-2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should resolve to skill, not command
+	if result.Type != ResourceTypeSkill {
+		t.Errorf("expected ResourceTypeSkill, got %d", result.Type)
+	}
+
+	if !strings.HasSuffix(result.Path, "SKILL.md") {
+		t.Errorf("expected path to end with SKILL.md, got %s", result.Path)
+	}
+}
+
+func TestResolve_ExactFilePath_ResourceType(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Test SKILL.md file
+	skillFile := filepath.Join(tmpDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("skill"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Resolve(skillFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Type != ResourceTypeSkill {
+		t.Errorf("expected ResourceTypeSkill for SKILL.md, got %d", result.Type)
+	}
+
+	// Test command .md file
+	commandFile := filepath.Join(tmpDir, "test-command.md")
+	if err := os.WriteFile(commandFile, []byte("command"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err = Resolve(commandFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Type != ResourceTypeCommand {
+		t.Errorf("expected ResourceTypeCommand for .md file, got %d", result.Type)
 	}
 }
 
