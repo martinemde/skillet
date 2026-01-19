@@ -13,10 +13,12 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/martinemde/skillet/internal/color"
+	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/parser"
 	"github.com/martinemde/skillet/internal/resolver"
+	"github.com/martinemde/skillet/internal/skillpath"
 )
 
 const version = "0.1.0"
@@ -27,6 +29,8 @@ var boolFlags = map[string]bool{
 	"--version": true,
 	"-help":     true,
 	"--help":    true,
+	"-list":     true,
+	"--list":    true,
 	"-verbose":  true,
 	"--verbose": true,
 	"-debug":    true,
@@ -97,6 +101,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	var (
 		showVersion    = flags.Bool("version", false, "Show version information")
 		showHelp       = flags.Bool("help", false, "Show help information")
+		listSkills     = flags.Bool("list", false, "List all available skills")
 		verbose        = flags.Bool("verbose", false, "Show verbose output including raw JSON")
 		debug          = flags.Bool("debug", false, "Show raw stream JSON as it's received")
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
@@ -107,7 +112,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
-		color          = flags.String("color", "auto", "Control color output (auto, always, never)")
+		colorFlag      = flags.String("color", "auto", "Control color output (auto, always, never)")
 	)
 	// Add alias for --quiet
 	flags.BoolVar(quiet, "quiet", false, "Quiet mode - suppress all output except errors")
@@ -125,8 +130,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *showHelp {
-		printHelp(stdout, *color)
+		printHelp(stdout, *colorFlag)
 		return nil
+	}
+
+	if *listSkills {
+		return listAvailableSkills(stdout, *colorFlag)
 	}
 
 	// Parse skill if provided
@@ -152,7 +161,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Require --prompt when no skill is provided
 	if skill == nil && *prompt == "" {
-		printHelp(stdout, *color)
+		printHelp(stdout, *colorFlag)
 		return nil
 	}
 
@@ -193,7 +202,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
 		SkillName:       skillName(skill),
-		Color:           *color,
+		Color:           *colorFlag,
 	})
 
 	// Set up context with cancellation
@@ -322,6 +331,7 @@ func printHelp(w io.Writer, colorMode string) {
 		sectionStyle.Render("Options:"),
 		fmt.Sprintf("  %s              Show this help message", optionStyle.Render("--help")),
 		fmt.Sprintf("  %s           Show version information", optionStyle.Render("--version")),
+		fmt.Sprintf("  %s              List all available skills", optionStyle.Render("--list")),
 		fmt.Sprintf("  %s           Show verbose output including raw JSON stream", optionStyle.Render("--verbose")),
 		fmt.Sprintf("  %s             Show raw stream JSON as it's received", optionStyle.Render("--debug")),
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
@@ -406,6 +416,90 @@ Your skill instructions go here...
 	)
 
 	_, _ = fmt.Fprintln(w, help)
+}
+
+func listAvailableSkills(w io.Writer, colorMode string) error {
+	useColors := color.ShouldUseColors(colorMode)
+
+	// Create skill path and discoverer
+	path, err := skillpath.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize skill path: %w", err)
+	}
+
+	disc := discovery.New(path)
+	skills, err := disc.Discover()
+	if err != nil {
+		return fmt.Errorf("failed to discover skills: %w", err)
+	}
+
+	// Define styles
+	titleStyle := lipgloss.NewStyle().Bold(true).MarginBottom(1)
+	nameStyle := lipgloss.NewStyle().Bold(true)
+	pathStyle := lipgloss.NewStyle()
+	overshadowedNameStyle := lipgloss.NewStyle()
+	overshadowedPathStyle := lipgloss.NewStyle()
+	overshadowedLabelStyle := lipgloss.NewStyle()
+	noSkillsStyle := lipgloss.NewStyle().Italic(true)
+
+	if useColors {
+		titleStyle = titleStyle.Foreground(lipgloss.Color("6")) // Cyan
+		nameStyle = nameStyle.Foreground(lipgloss.Color("2"))   // Green
+		pathStyle = pathStyle.Foreground(lipgloss.Color("8"))   // Dim gray
+		overshadowedNameStyle = overshadowedNameStyle.
+			Foreground(lipgloss.Color("8")).
+			Strikethrough(true)
+		overshadowedPathStyle = overshadowedPathStyle.
+			Foreground(lipgloss.Color("8"))
+		overshadowedLabelStyle = overshadowedLabelStyle.
+			Foreground(lipgloss.Color("8")).
+			Italic(true)
+		noSkillsStyle = noSkillsStyle.Foreground(lipgloss.Color("3")) // Yellow
+	}
+
+	if len(skills) == 0 {
+		_, _ = fmt.Fprintln(w, titleStyle.Render("Available Skills"))
+		_, _ = fmt.Fprintln(w, noSkillsStyle.Render("  No skills found."))
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "  Skills are looked for in:")
+		for _, source := range path.Sources() {
+			_, _ = fmt.Fprintf(w, "    • %s (%s)\n", source.Path, source.Name)
+		}
+		return nil
+	}
+
+	// Find the longest skill name for alignment
+	maxNameLen := 0
+	for _, skill := range skills {
+		if len(skill.Name) > maxNameLen {
+			maxNameLen = len(skill.Name)
+		}
+	}
+
+	// Build output
+	var lines []string
+	lines = append(lines, titleStyle.Render("Available Skills"))
+	lines = append(lines, "")
+
+	for _, skill := range skills {
+		relPath := discovery.RelativePath(skill)
+		padding := strings.Repeat(" ", maxNameLen-len(skill.Name))
+
+		if skill.Overshadowed {
+			name := overshadowedNameStyle.Render(skill.Name)
+			path := overshadowedPathStyle.Render(relPath)
+			label := overshadowedLabelStyle.Render(" (overshadowed)")
+			lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
+		} else {
+			name := nameStyle.Render(skill.Name)
+			path := pathStyle.Render(relPath)
+			lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
+		}
+	}
+
+	output := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	_, _ = fmt.Fprintln(w, output)
+	return nil
 }
 
 // Helper functions for skill value extraction
