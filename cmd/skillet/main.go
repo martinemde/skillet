@@ -513,11 +513,7 @@ func listAvailable(w io.Writer, colorMode string) error {
 		// Find the longest skill display name for alignment
 		maxNameLen := 0
 		for _, skill := range skills {
-			// Display format: "name (source)" or "name (source:namespace)"
-			sourceInfo := skill.Source.Name
-			if skill.Namespace != "" {
-				sourceInfo = skill.Source.Name + ":" + skill.Namespace
-			}
+			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
 			displayLen := len(skill.Name) + len(" ("+sourceInfo+")")
 			if displayLen > maxNameLen {
 				maxNameLen = displayLen
@@ -526,11 +522,7 @@ func listAvailable(w io.Writer, colorMode string) error {
 
 		for _, skill := range skills {
 			relPath := discovery.RelativePath(skill)
-			// Display format: "name (source)" or "name (source:namespace)"
-			sourceInfo := skill.Source.Name
-			if skill.Namespace != "" {
-				sourceInfo = skill.Source.Name + ":" + skill.Namespace
-			}
+			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
 			rawDisplayLen := len(skill.Name) + len(" ("+sourceInfo+")")
 			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
 
@@ -563,11 +555,7 @@ func listAvailable(w io.Writer, colorMode string) error {
 		// Find the longest command display name for alignment
 		maxNameLen := 0
 		for _, cmd := range commands {
-			// Display format: "name (source)" or "name (source:namespace)"
-			sourceInfo := cmd.Source.Name
-			if cmd.Namespace != "" {
-				sourceInfo = cmd.Source.Name + ":" + cmd.Namespace
-			}
+			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
 			displayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
 			if displayLen > maxNameLen {
 				maxNameLen = displayLen
@@ -576,11 +564,7 @@ func listAvailable(w io.Writer, colorMode string) error {
 
 		for _, cmd := range commands {
 			relPath := command.RelativePath(cmd)
-			// Display format: "name (source)" or "name (source:namespace)"
-			sourceInfo := cmd.Source.Name
-			if cmd.Namespace != "" {
-				sourceInfo = cmd.Source.Name + ":" + cmd.Namespace
-			}
+			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
 			rawDisplayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
 			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
 
@@ -604,6 +588,14 @@ func listAvailable(w io.Writer, colorMode string) error {
 }
 
 // Helper functions for resource value extraction
+
+// formatSourceInfo returns the source display string: "source" or "source:namespace"
+func formatSourceInfo(sourceName, namespace string) string {
+	if namespace != "" {
+		return sourceName + ":" + namespace
+	}
+	return sourceName
+}
 
 func resourceModel(s *parser.Skill, c *command.Command) string {
 	if s != nil && s.Model != "" && s.Model != "inherit" {
