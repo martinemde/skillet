@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/martinemde/skillet/internal/frontmatter"
 	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
 )
@@ -91,54 +92,20 @@ func ParseWithBaseDir(commandPath, baseDir, arguments string) (*Command, error) 
 
 // parseFrontmatter extracts YAML frontmatter and content from the file
 func parseFrontmatter(data string) (*Command, error) {
-	scanner := bufio.NewScanner(strings.NewReader(data))
-
-	var inFrontmatter bool
-	var frontmatterLines []string
-	var contentLines []string
-	var frontmatterCount int
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Check for frontmatter delimiters
-		if strings.TrimSpace(line) == "---" {
-			frontmatterCount++
-			if frontmatterCount == 1 {
-				inFrontmatter = true
-				continue
-			} else if frontmatterCount == 2 {
-				inFrontmatter = false
-				continue
-			}
-		}
-
-		if inFrontmatter {
-			frontmatterLines = append(frontmatterLines, line)
-		} else if frontmatterCount >= 2 {
-			contentLines = append(contentLines, line)
-		} else if frontmatterCount == 0 {
-			// No frontmatter, everything is content
-			contentLines = append(contentLines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
+	result, err := frontmatter.Parse(data, false) // frontmatter is optional for commands
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse YAML frontmatter if present
 	cmd := &Command{}
-	if frontmatterCount >= 2 && len(frontmatterLines) > 0 {
-		frontmatterYAML := strings.Join(frontmatterLines, "\n")
-		if err := yaml.Unmarshal([]byte(frontmatterYAML), cmd); err != nil {
+	if result.HasFrontmatter && result.FrontmatterYAML != "" {
+		if err := yaml.Unmarshal([]byte(result.FrontmatterYAML), cmd); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
 		}
 	}
 
-	// Set content
-	cmd.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
-
+	cmd.Content = result.Content
 	return cmd, nil
 }
 

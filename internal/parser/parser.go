@@ -1,12 +1,11 @@
 package parser
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/martinemde/skillet/internal/frontmatter"
 	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
 )
@@ -76,53 +75,18 @@ func ParseWithBaseDir(skillPath string, baseDir string) (*Skill, error) {
 
 // parseFrontmatter extracts YAML frontmatter and content from the file
 func parseFrontmatter(data string) (*Skill, error) {
-	scanner := bufio.NewScanner(strings.NewReader(data))
-
-	var inFrontmatter bool
-	var frontmatterLines []string
-	var contentLines []string
-	var frontmatterCount int
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Check for frontmatter delimiters
-		if strings.TrimSpace(line) == "---" {
-			frontmatterCount++
-			if frontmatterCount == 1 {
-				inFrontmatter = true
-				continue
-			} else if frontmatterCount == 2 {
-				inFrontmatter = false
-				continue
-			}
-		}
-
-		if inFrontmatter {
-			frontmatterLines = append(frontmatterLines, line)
-		} else if frontmatterCount >= 2 {
-			contentLines = append(contentLines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
-	}
-
-	if frontmatterCount < 2 {
-		return nil, fmt.Errorf("invalid frontmatter: expected two '---' delimiters, found %d", frontmatterCount)
+	result, err := frontmatter.Parse(data, true)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse YAML frontmatter
 	skill := &Skill{}
-	frontmatterYAML := strings.Join(frontmatterLines, "\n")
-	if err := yaml.Unmarshal([]byte(frontmatterYAML), skill); err != nil {
+	if err := yaml.Unmarshal([]byte(result.FrontmatterYAML), skill); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
 	}
 
-	// Set content
-	skill.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
-
+	skill.Content = result.Content
 	return skill, nil
 }
 
