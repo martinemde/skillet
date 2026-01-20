@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/martinemde/skillet/internal/color"
+	"github.com/martinemde/skillet/internal/command"
+	"github.com/martinemde/skillet/internal/commandpath"
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
@@ -101,7 +103,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	var (
 		showVersion    = flags.Bool("version", false, "Show version information")
 		showHelp       = flags.Bool("help", false, "Show help information")
-		listSkills     = flags.Bool("list", false, "List all available skills")
+		listSkills     = flags.Bool("list", false, "List all available skills and commands")
 		verbose        = flags.Bool("verbose", false, "Show verbose output including raw JSON")
 		debug          = flags.Bool("debug", false, "Show raw stream JSON as it's received")
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
@@ -135,42 +137,62 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *listSkills {
-		return listAvailableSkills(stdout, *colorFlag)
+		return listAvailable(stdout, *colorFlag)
 	}
 
-	// Parse skill if provided
+	// Parse skill or command if provided
 	var skill *parser.Skill
+	var cmd *command.Command
+	var resourceName string
+	var resourcePath string
 	if len(posArgs) > 0 {
 		result, err := resolver.Resolve(posArgs[0])
 		if err != nil {
-			return fmt.Errorf("failed to resolve skill: %w", err)
+			return fmt.Errorf("failed to resolve skill or command: %w", err)
 		}
 		if result.IsURL {
 			defer func() { _ = os.Remove(result.Path) }()
 		}
 
-		if result.BaseURL != "" {
-			skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
-		} else {
-			skill, err = parser.Parse(result.Path)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to parse skill file: %w", err)
+		resourcePath = result.Path
+
+		switch result.Type {
+		case resolver.ResourceTypeSkill:
+			if result.BaseURL != "" {
+				skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
+			} else {
+				skill, err = parser.Parse(result.Path)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to parse skill file: %w", err)
+			}
+			resourceName = skill.Name
+		case resolver.ResourceTypeCommand:
+			arguments := strings.Join(posArgs[1:], " ")
+			if result.BaseURL != "" {
+				cmd, err = command.ParseWithBaseDir(result.Path, result.BaseURL, arguments)
+			} else {
+				cmd, err = command.Parse(result.Path, arguments)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to parse command file: %w", err)
+			}
+			resourceName = cmd.Name
 		}
 	}
 
-	// Require --prompt when no skill is provided
-	if skill == nil && *prompt == "" {
+	// Require --prompt when no skill/command is provided
+	if skill == nil && cmd == nil && *prompt == "" {
 		printHelp(stdout, *colorFlag)
 		return nil
 	}
 
 	// Build executor config with resolved values
 	config := executor.Config{
-		Prompt:         resolvePrompt(*prompt, skill),
-		SystemPrompt:   buildSystemPrompt(skill),
-		Model:          resolveString(*model, skillModel(skill)),
-		AllowedTools:   resolveString(*allowedTools, skillAllowedTools(skill)),
+		Prompt:         resolvePromptFromResource(*prompt, skill, cmd),
+		SystemPrompt:   buildSystemPromptFromResource(skill, cmd),
+		Model:          resolveString(*model, resourceModel(skill, cmd)),
+		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(skill, cmd)),
 		PermissionMode: *permissionMode,
 		OutputFormat:   *outputFormat,
 	}
@@ -201,7 +223,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Debug:           *debug,
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
-		SkillName:       skillName(skill),
+		SkillName:       resourceName,
+		SkillPath:       resourcePath,
 		Color:           *colorFlag,
 	})
 
@@ -314,24 +337,25 @@ func printHelp(w io.Writer, colorMode string) {
 
 	description := lipgloss.JoinVertical(lipgloss.Left,
 		sectionStyle.Render("Description:"),
-		descStyle.Render("  Skillet parses SKILL.md files and executes them using the Claude CLI."),
+		descStyle.Render("  Skillet parses SKILL.md and command files and executes them using the Claude CLI."),
 		descStyle.Render("  It reads the frontmatter configuration, interpolates variables, and"),
 		descStyle.Render("  invokes Claude with the appropriate arguments in headless mode."),
 		"",
-		descStyle.Render("  You can also run skillet without a skill by providing --prompt directly."),
+		descStyle.Render("  You can also run skillet without a skill/command by providing --prompt directly."),
 		"",
-		"  The skill path can be:",
-		"  • An exact file path "+codeStyle.Render("(e.g., path/to/SKILL.md)"),
+		"  The skill/command path can be:",
+		"  • An exact file path "+codeStyle.Render("(e.g., path/to/SKILL.md or path/to/command.md)"),
 		"  • A directory containing SKILL.md "+codeStyle.Render("(e.g., path/to/skill)"),
 		"  • A skill name in .claude/skills/ "+codeStyle.Render("(e.g., skill-name)"),
-		"  • A URL to a skill file "+codeStyle.Render("(e.g., https://example.com/skill.md)"),
+		"  • A command name in .claude/commands/ "+codeStyle.Render("(e.g., command-name)"),
+		"  • A URL to a skill/command file "+codeStyle.Render("(e.g., https://example.com/skill.md)"),
 	)
 
 	options := lipgloss.JoinVertical(lipgloss.Left,
 		sectionStyle.Render("Options:"),
 		fmt.Sprintf("  %s              Show this help message", optionStyle.Render("--help")),
 		fmt.Sprintf("  %s           Show version information", optionStyle.Render("--version")),
-		fmt.Sprintf("  %s              List all available skills", optionStyle.Render("--list")),
+		fmt.Sprintf("  %s              List all available skills and commands", optionStyle.Render("--list")),
 		fmt.Sprintf("  %s           Show verbose output including raw JSON stream", optionStyle.Render("--verbose")),
 		fmt.Sprintf("  %s             Show raw stream JSON as it's received", optionStyle.Render("--debug")),
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
@@ -418,34 +442,49 @@ Your skill instructions go here...
 	_, _ = fmt.Fprintln(w, help)
 }
 
-func listAvailableSkills(w io.Writer, colorMode string) error {
+func listAvailable(w io.Writer, colorMode string) error {
 	useColors := color.ShouldUseColors(colorMode)
 
 	// Create skill path and discoverer
-	path, err := skillpath.New()
+	skillPath, err := skillpath.New()
 	if err != nil {
 		return fmt.Errorf("failed to initialize skill path: %w", err)
 	}
 
-	disc := discovery.New(path)
-	skills, err := disc.Discover()
+	skillDisc := discovery.New(skillPath)
+	skills, err := skillDisc.Discover()
 	if err != nil {
 		return fmt.Errorf("failed to discover skills: %w", err)
 	}
 
+	// Create command path and discoverer
+	cmdPath, err := commandpath.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize command path: %w", err)
+	}
+
+	cmdDisc := command.NewDiscoverer(cmdPath)
+	commands, err := cmdDisc.Discover()
+	if err != nil {
+		return fmt.Errorf("failed to discover commands: %w", err)
+	}
+
 	// Define styles
 	titleStyle := lipgloss.NewStyle().Bold(true).MarginBottom(1)
+	sectionStyle := lipgloss.NewStyle().Bold(true).MarginTop(1)
 	nameStyle := lipgloss.NewStyle().Bold(true)
 	pathStyle := lipgloss.NewStyle()
 	overshadowedNameStyle := lipgloss.NewStyle()
 	overshadowedPathStyle := lipgloss.NewStyle()
 	overshadowedLabelStyle := lipgloss.NewStyle()
-	noSkillsStyle := lipgloss.NewStyle().Italic(true)
+	noItemsStyle := lipgloss.NewStyle().Italic(true)
+	namespaceStyle := lipgloss.NewStyle().Italic(true)
 
 	if useColors {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("6")) // Cyan
-		nameStyle = nameStyle.Foreground(lipgloss.Color("2"))   // Green
-		pathStyle = pathStyle.Foreground(lipgloss.Color("8"))   // Dim gray
+		titleStyle = titleStyle.Foreground(lipgloss.Color("6"))     // Cyan
+		sectionStyle = sectionStyle.Foreground(lipgloss.Color("3")) // Yellow
+		nameStyle = nameStyle.Foreground(lipgloss.Color("2"))       // Green
+		pathStyle = pathStyle.Foreground(lipgloss.Color("8"))       // Dim gray
 		overshadowedNameStyle = overshadowedNameStyle.
 			Foreground(lipgloss.Color("8")).
 			Strikethrough(true)
@@ -454,46 +493,93 @@ func listAvailableSkills(w io.Writer, colorMode string) error {
 		overshadowedLabelStyle = overshadowedLabelStyle.
 			Foreground(lipgloss.Color("8")).
 			Italic(true)
-		noSkillsStyle = noSkillsStyle.Foreground(lipgloss.Color("3")) // Yellow
+		noItemsStyle = noItemsStyle.Foreground(lipgloss.Color("8")) // Dim
+		namespaceStyle = namespaceStyle.Foreground(lipgloss.Color("8"))
 	}
 
-	if len(skills) == 0 {
-		_, _ = fmt.Fprintln(w, titleStyle.Render("Available Skills"))
-		_, _ = fmt.Fprintln(w, noSkillsStyle.Render("  No skills found."))
-		_, _ = fmt.Fprintln(w)
-		_, _ = fmt.Fprintln(w, "  Skills are looked for in:")
-		for _, source := range path.Sources() {
-			_, _ = fmt.Fprintf(w, "    • %s (%s)\n", source.Path, source.Name)
-		}
-		return nil
-	}
-
-	// Find the longest skill name for alignment
-	maxNameLen := 0
-	for _, skill := range skills {
-		if len(skill.Name) > maxNameLen {
-			maxNameLen = len(skill.Name)
-		}
-	}
-
-	// Build output
 	var lines []string
-	lines = append(lines, titleStyle.Render("Available Skills"))
+	lines = append(lines, titleStyle.Render("Available Skills and Commands"))
 	lines = append(lines, "")
 
-	for _, skill := range skills {
-		relPath := discovery.RelativePath(skill)
-		padding := strings.Repeat(" ", maxNameLen-len(skill.Name))
+	// Skills section
+	lines = append(lines, sectionStyle.Render("Skills"))
+	if len(skills) == 0 {
+		lines = append(lines, noItemsStyle.Render("  No skills found."))
+		lines = append(lines, "")
+		lines = append(lines, "  Skills are looked for in:")
+		for _, source := range skillPath.Sources() {
+			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
+		}
+	} else {
+		// Find the longest skill display name for alignment
+		maxNameLen := 0
+		for _, skill := range skills {
+			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
+			displayLen := len(skill.Name) + len(" ("+sourceInfo+")")
+			if displayLen > maxNameLen {
+				maxNameLen = displayLen
+			}
+		}
 
-		if skill.Overshadowed {
-			name := overshadowedNameStyle.Render(skill.Name)
-			path := overshadowedPathStyle.Render(relPath)
-			label := overshadowedLabelStyle.Render(" (overshadowed)")
-			lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
-		} else {
-			name := nameStyle.Render(skill.Name)
-			path := pathStyle.Render(relPath)
-			lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
+		for _, skill := range skills {
+			relPath := discovery.RelativePath(skill)
+			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
+			rawDisplayLen := len(skill.Name) + len(" ("+sourceInfo+")")
+			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
+
+			if skill.Overshadowed {
+				displayName := skill.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
+				name := overshadowedNameStyle.Render(displayName)
+				path := overshadowedPathStyle.Render(relPath)
+				label := overshadowedLabelStyle.Render(" (overshadowed)")
+				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
+			} else {
+				name := nameStyle.Render(skill.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
+				path := pathStyle.Render(relPath)
+				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
+			}
+		}
+	}
+
+	lines = append(lines, "")
+
+	// Commands section
+	lines = append(lines, sectionStyle.Render("Commands"))
+	if len(commands) == 0 {
+		lines = append(lines, noItemsStyle.Render("  No commands found."))
+		lines = append(lines, "")
+		lines = append(lines, "  Commands are looked for in:")
+		for _, source := range cmdPath.Sources() {
+			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
+		}
+	} else {
+		// Find the longest command display name for alignment
+		maxNameLen := 0
+		for _, cmd := range commands {
+			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
+			displayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
+			if displayLen > maxNameLen {
+				maxNameLen = displayLen
+			}
+		}
+
+		for _, cmd := range commands {
+			relPath := command.RelativePath(cmd)
+			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
+			rawDisplayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
+			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
+
+			if cmd.Overshadowed {
+				displayName := cmd.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
+				name := overshadowedNameStyle.Render(displayName)
+				path := overshadowedPathStyle.Render(relPath)
+				label := overshadowedLabelStyle.Render(" (overshadowed)")
+				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
+			} else {
+				name := nameStyle.Render(cmd.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
+				path := pathStyle.Render(relPath)
+				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
+			}
 		}
 	}
 
@@ -502,35 +588,45 @@ func listAvailableSkills(w io.Writer, colorMode string) error {
 	return nil
 }
 
-// Helper functions for skill value extraction
+// Helper functions for resource value extraction
 
-func skillName(s *parser.Skill) string {
-	if s == nil {
-		return ""
+// formatSourceInfo returns the source display string: "source" or "source:namespace"
+func formatSourceInfo(sourceName, namespace string) string {
+	if namespace != "" {
+		return sourceName + ":" + namespace
 	}
-	return s.Name
+	return sourceName
 }
 
-func skillModel(s *parser.Skill) string {
-	if s == nil || s.Model == "inherit" {
-		return ""
+func resourceModel(s *parser.Skill, c *command.Command) string {
+	if s != nil && s.Model != "" && s.Model != "inherit" {
+		return s.Model
 	}
-	return s.Model
+	if c != nil && c.Model != "" && c.Model != "inherit" {
+		return c.Model
+	}
+	return ""
 }
 
-func skillAllowedTools(s *parser.Skill) string {
-	if s == nil {
-		return ""
+func resourceAllowedTools(s *parser.Skill, c *command.Command) string {
+	if s != nil && s.AllowedTools != "" {
+		return s.AllowedTools
 	}
-	return s.AllowedTools
+	if c != nil && c.AllowedTools != "" {
+		return c.AllowedTools
+	}
+	return ""
 }
 
-func resolvePrompt(cliPrompt string, s *parser.Skill) string {
+func resolvePromptFromResource(cliPrompt string, s *parser.Skill, c *command.Command) string {
 	if cliPrompt != "" {
 		return cliPrompt
 	}
 	if s != nil {
 		return s.Description
+	}
+	if c != nil {
+		return c.Description
 	}
 	return ""
 }
@@ -542,11 +638,17 @@ func resolveString(override, fallback string) string {
 	return fallback
 }
 
-func buildSystemPrompt(s *parser.Skill) string {
-	if s == nil {
-		return ""
+func buildSystemPromptFromResource(s *parser.Skill, c *command.Command) string {
+	if s != nil {
+		return buildSkillSystemPrompt(s)
 	}
+	if c != nil {
+		return buildCommandSystemPrompt(c)
+	}
+	return ""
+}
 
+func buildSkillSystemPrompt(s *parser.Skill) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# %s\n\n", s.Name))
 	sb.WriteString(fmt.Sprintf("%s\n\n", s.Description))
@@ -554,5 +656,15 @@ func buildSystemPrompt(s *parser.Skill) string {
 		sb.WriteString(fmt.Sprintf("**Compatibility:** %s\n\n", s.Compatibility))
 	}
 	sb.WriteString(s.Content)
+	return sb.String()
+}
+
+func buildCommandSystemPrompt(c *command.Command) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s\n\n", c.Name))
+	if c.Description != "" {
+		sb.WriteString(fmt.Sprintf("%s\n\n", c.Description))
+	}
+	sb.WriteString(c.Content)
 	return sb.String()
 }

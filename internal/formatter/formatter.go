@@ -104,6 +104,7 @@ type Config struct {
 	ShowUsage       bool
 	PassthroughMode bool   // If true, stream output directly without parsing
 	SkillName       string // Name of the skill being executed
+	SkillPath       string // Path to the skill/command file being executed
 	Color           string // Color mode: "auto", "always", or "never"
 }
 
@@ -115,6 +116,7 @@ type Formatter struct {
 	showUsage       bool
 	passthroughMode bool   // If true, stream output directly without parsing
 	skillName       string // Name of the skill being executed
+	skillPath       string // Path to the skill/command file being executed
 	color           string // Color mode: "auto", "always", or "never"
 	tools           []ToolOperation
 	startTime       time.Time
@@ -153,6 +155,7 @@ func New(cfg Config) *Formatter {
 		showUsage:       cfg.ShowUsage,
 		passthroughMode: cfg.PassthroughMode,
 		skillName:       cfg.SkillName,
+		skillPath:       cfg.SkillPath,
 		color:           cfg.Color,
 		startTime:       time.Now(),
 		toolCallMap:     make(map[string]int),
@@ -212,7 +215,13 @@ func (f *Formatter) handleSystemMessage(msg Message) {
 	if msg.Subtype == "init" {
 		icon := f.applyColorToIcon(successIcon)
 		if f.skillName != "" {
-			_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
+			// In verbose mode, append the path in dim/black style
+			if f.verbose && f.skillPath != "" {
+				pathStyle := f.applyColorToStyle(dimStyle)
+				_, _ = fmt.Fprintf(f.output, "%s Starting %s %s\n", icon.String(), f.skillName, pathStyle.Render(f.skillPath))
+			} else {
+				_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), f.skillName)
+			}
 		} else {
 			_, _ = fmt.Fprintf(f.output, "%s Starting\n", icon.String())
 		}
