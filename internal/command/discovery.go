@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/martinemde/skillet/internal/commandpath"
+	"github.com/martinemde/skillet/internal/resourcepath"
 )
 
 // DiscoveredCommand represents a discovered command
@@ -192,27 +193,5 @@ func (d *Discoverer) DiscoverByName(name string) ([]DiscoveredCommand, error) {
 
 // RelativePath returns a display-friendly relative path for the command.
 func RelativePath(cmd DiscoveredCommand) string {
-	// Try to make relative to home directory
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		if rel, err := filepath.Rel(homeDir, cmd.Path); err == nil {
-			if len(rel) < len(cmd.Path) {
-				return "~/" + rel
-			}
-		}
-	}
-
-	// Try to make relative to current directory
-	wd, err := os.Getwd()
-	if err == nil {
-		if rel, err := filepath.Rel(wd, cmd.Path); err == nil {
-			if len(rel) < len(cmd.Path) && rel[0] != '.' {
-				return "./" + rel
-			} else if len(rel) < len(cmd.Path) {
-				return rel
-			}
-		}
-	}
-
-	return cmd.Path
+	return resourcepath.RelativePath(cmd.Path)
 }

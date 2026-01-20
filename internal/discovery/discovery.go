@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/martinemde/skillet/internal/resourcepath"
 	"github.com/martinemde/skillet/internal/skillpath"
 )
 
@@ -215,27 +216,5 @@ func (d *Discoverer) DiscoverByName(name string) ([]Skill, error) {
 // RelativePath returns a display-friendly relative path for the skill.
 // It tries to make the path relative to common reference points.
 func RelativePath(skill Skill) string {
-	// Try to make relative to home directory
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		if rel, err := filepath.Rel(homeDir, skill.Path); err == nil {
-			if len(rel) < len(skill.Path) {
-				return "~/" + rel
-			}
-		}
-	}
-
-	// Try to make relative to current directory
-	wd, err := os.Getwd()
-	if err == nil {
-		if rel, err := filepath.Rel(wd, skill.Path); err == nil {
-			if len(rel) < len(skill.Path) && rel[0] != '.' {
-				return "./" + rel
-			} else if len(rel) < len(skill.Path) {
-				return rel
-			}
-		}
-	}
-
-	return skill.Path
+	return resourcepath.RelativePath(skill.Path)
 }

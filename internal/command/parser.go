@@ -8,16 +8,14 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/martinemde/skillet/internal/frontmatter"
+	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	// baseDirRegex matches {baseDir} variable references
-	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
 	// argumentsRegex matches $ARGUMENTS variable references
 	argumentsRegex = regexp.MustCompile(`\$ARGUMENTS`)
-	// nameRegex validates command name format (same as skill names)
-	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
 // Command represents a parsed command .md file
@@ -94,60 +92,26 @@ func ParseWithBaseDir(commandPath, baseDir, arguments string) (*Command, error) 
 
 // parseFrontmatter extracts YAML frontmatter and content from the file
 func parseFrontmatter(data string) (*Command, error) {
-	scanner := bufio.NewScanner(strings.NewReader(data))
-
-	var inFrontmatter bool
-	var frontmatterLines []string
-	var contentLines []string
-	var frontmatterCount int
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Check for frontmatter delimiters
-		if strings.TrimSpace(line) == "---" {
-			frontmatterCount++
-			if frontmatterCount == 1 {
-				inFrontmatter = true
-				continue
-			} else if frontmatterCount == 2 {
-				inFrontmatter = false
-				continue
-			}
-		}
-
-		if inFrontmatter {
-			frontmatterLines = append(frontmatterLines, line)
-		} else if frontmatterCount >= 2 {
-			contentLines = append(contentLines, line)
-		} else if frontmatterCount == 0 {
-			// No frontmatter, everything is content
-			contentLines = append(contentLines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
+	result, err := frontmatter.Parse(data, false) // frontmatter is optional for commands
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse YAML frontmatter if present
 	cmd := &Command{}
-	if frontmatterCount >= 2 && len(frontmatterLines) > 0 {
-		frontmatterYAML := strings.Join(frontmatterLines, "\n")
-		if err := yaml.Unmarshal([]byte(frontmatterYAML), cmd); err != nil {
+	if result.HasFrontmatter && result.FrontmatterYAML != "" {
+		if err := yaml.Unmarshal([]byte(result.FrontmatterYAML), cmd); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
 		}
 	}
 
-	// Set content
-	cmd.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
-
+	cmd.Content = result.Content
 	return cmd, nil
 }
 
 // interpolateVariables replaces variables like {baseDir} and $ARGUMENTS with actual values
 func interpolateVariables(content, baseDir, arguments string) string {
-	content = baseDirRegex.ReplaceAllString(content, baseDir)
+	content = validation.InterpolateBaseDir(content, baseDir)
 	content = argumentsRegex.ReplaceAllString(content, arguments)
 	return content
 }
@@ -172,22 +136,8 @@ func extractFirstLine(content string) string {
 
 // Validate checks that the command is valid
 func (c *Command) Validate() error {
-	// Name is derived from filename, validate format
-	if c.Name == "" {
-		return fmt.Errorf("command name is required")
-	}
-
-	// Validate name format
-	if !nameRegex.MatchString(c.Name) {
-		return fmt.Errorf("invalid command name format: must be lowercase letters, numbers, and hyphens, not starting/ending with hyphen")
-	}
-
-	if len(c.Name) > 64 {
-		return fmt.Errorf("command name too long: max 64 characters, got %d", len(c.Name))
-	}
-
-	if strings.Contains(c.Name, "--") {
-		return fmt.Errorf("command name cannot contain consecutive hyphens")
+	if err := validation.ValidateName(c.Name, "command"); err != nil {
+		return err
 	}
 
 	// Content is required (a command must do something)

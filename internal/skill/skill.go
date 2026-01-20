@@ -1,21 +1,13 @@
-package parser
+package skill
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 
+	"github.com/martinemde/skillet/internal/frontmatter"
+	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
-)
-
-var (
-	// baseDirRegex matches {baseDir} variable references
-	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
-	// nameRegex validates skill name format
-	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
 // Skill represents a parsed SKILL.md file
@@ -83,79 +75,30 @@ func ParseWithBaseDir(skillPath string, baseDir string) (*Skill, error) {
 
 // parseFrontmatter extracts YAML frontmatter and content from the file
 func parseFrontmatter(data string) (*Skill, error) {
-	scanner := bufio.NewScanner(strings.NewReader(data))
-
-	var inFrontmatter bool
-	var frontmatterLines []string
-	var contentLines []string
-	var frontmatterCount int
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Check for frontmatter delimiters
-		if strings.TrimSpace(line) == "---" {
-			frontmatterCount++
-			if frontmatterCount == 1 {
-				inFrontmatter = true
-				continue
-			} else if frontmatterCount == 2 {
-				inFrontmatter = false
-				continue
-			}
-		}
-
-		if inFrontmatter {
-			frontmatterLines = append(frontmatterLines, line)
-		} else if frontmatterCount >= 2 {
-			contentLines = append(contentLines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
-	}
-
-	if frontmatterCount < 2 {
-		return nil, fmt.Errorf("invalid frontmatter: expected two '---' delimiters, found %d", frontmatterCount)
+	result, err := frontmatter.Parse(data, true)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse YAML frontmatter
 	skill := &Skill{}
-	frontmatterYAML := strings.Join(frontmatterLines, "\n")
-	if err := yaml.Unmarshal([]byte(frontmatterYAML), skill); err != nil {
+	if err := yaml.Unmarshal([]byte(result.FrontmatterYAML), skill); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
 	}
 
-	// Set content
-	skill.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
-
+	skill.Content = result.Content
 	return skill, nil
 }
 
 // interpolateVariables replaces variables like {baseDir} with actual values
 func interpolateVariables(content, baseDir string) string {
-	// Replace {baseDir} with the actual base directory
-	return baseDirRegex.ReplaceAllString(content, baseDir)
+	return validation.InterpolateBaseDir(content, baseDir)
 }
 
 // Validate checks that required fields are present and valid
 func (s *Skill) Validate() error {
-	if s.Name == "" {
-		return fmt.Errorf("name is required")
-	}
-
-	// Validate name format
-	if !nameRegex.MatchString(s.Name) {
-		return fmt.Errorf("invalid name format: must be lowercase letters, numbers, and hyphens, not starting/ending with hyphen")
-	}
-
-	if len(s.Name) > 64 {
-		return fmt.Errorf("name too long: max 64 characters, got %d", len(s.Name))
-	}
-
-	if strings.Contains(s.Name, "--") {
-		return fmt.Errorf("name cannot contain consecutive hyphens")
+	if err := validation.ValidateName(s.Name, "skill"); err != nil {
+		return err
 	}
 
 	if s.Description == "" {
