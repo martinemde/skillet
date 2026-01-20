@@ -426,3 +426,156 @@ func TestRun_List_WithColorNever(t *testing.T) {
 		t.Errorf("List output should contain 'Available Skills', got: %s", output)
 	}
 }
+
+func TestRun_ParseFile(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--parse", "../../testdata/parse/tool-operations.jsonl", "--color=never"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Check for expected content from the fixture
+	expectedStrings := []string{
+		"Starting",
+		"Read test.txt",
+		"Glob **/*.go",
+		"Bash Print hello",
+		"Completed",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(output, expected) {
+			t.Errorf("Parse output should contain '%s', got: %s", expected, output)
+		}
+	}
+}
+
+func TestRun_ParseFileConversationLog(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--parse", "../../testdata/parse/conversation-log.jsonl", "--color=never"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Check for expected content - includes todo items and tool operations
+	expectedStrings := []string{
+		"Starting",
+		"Create greeting.txt file",
+		"Write greeting.txt",
+		"Completed",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(output, expected) {
+			t.Errorf("Parse output should contain '%s', got: %s", expected, output)
+		}
+	}
+}
+
+func TestRun_ParseStdin(t *testing.T) {
+	// We can't easily test actual stdin in unit tests, but we can test the flag parsing
+	// by verifying --parse=- is accepted and the error is about reading, not flag parsing
+	var stdout, stderr bytes.Buffer
+
+	// Test with explicit stdin flag
+	err := run([]string{"skillet", "--parse=-", "--color=never"}, &stdout, &stderr)
+	// This will fail because stdin is empty in tests, but it should not error on flag parsing
+	// The error should be about reading/formatting, not about the flag
+	if err != nil && !strings.Contains(err.Error(), "formatting failed") {
+		t.Fatalf("Unexpected error type: %v", err)
+	}
+}
+
+func TestRun_ParseWithVerbose(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--parse", "../../testdata/parse/tool-operations.jsonl", "--verbose", "--color=never"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Verbose should still show tool operations
+	if !strings.Contains(output, "Read test.txt") {
+		t.Errorf("Verbose parse should show tool operations, got: %s", output)
+	}
+}
+
+func TestRun_ParseNonexistentFile(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--parse", "nonexistent.jsonl"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Expected error for nonexistent file, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to open input file") {
+		t.Errorf("Expected file open error, got: %v", err)
+	}
+}
+
+func TestSeparateFlags_ParseFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedFlags   []string
+		expectedPosArgs []string
+	}{
+		{
+			name:            "parse with file",
+			args:            []string{"--parse", "file.jsonl"},
+			expectedFlags:   []string{"--parse", "file.jsonl"},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "parse with equals",
+			args:            []string{"--parse=file.jsonl"},
+			expectedFlags:   []string{"--parse=file.jsonl"},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "parse with stdin",
+			args:            []string{"--parse=-"},
+			expectedFlags:   []string{"--parse=-"},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "parse alone defaults to stdin",
+			args:            []string{"--parse"},
+			expectedFlags:   []string{"--parse=-"},
+			expectedPosArgs: []string{},
+		},
+		{
+			name:            "parse with other flags",
+			args:            []string{"--parse", "file.jsonl", "--verbose", "--color=never"},
+			expectedFlags:   []string{"--parse", "file.jsonl", "--verbose", "--color=never"},
+			expectedPosArgs: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flagArgs, posArgs := separateFlags(tt.args)
+
+			if len(flagArgs) != len(tt.expectedFlags) {
+				t.Errorf("Expected %d flag args, got %d: %v", len(tt.expectedFlags), len(flagArgs), flagArgs)
+			}
+			for i, expected := range tt.expectedFlags {
+				if i >= len(flagArgs) || flagArgs[i] != expected {
+					t.Errorf("Expected flag arg[%d] = %q, got %q", i, expected, flagArgs[i])
+				}
+			}
+
+			if len(posArgs) != len(tt.expectedPosArgs) {
+				t.Errorf("Expected %d positional args, got %d: %v", len(tt.expectedPosArgs), len(posArgs), posArgs)
+			}
+		})
+	}
+}

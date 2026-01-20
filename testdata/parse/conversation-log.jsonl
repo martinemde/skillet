@@ -1,0 +1,9 @@
+{"type":"user","message":{"role":"user","content":"Help me create a greeting file"}}
+{"type":"system","subtype":"init","session_id":"conv-session","tools":[],"model":"claude-opus-4-5-20251101","cwd":"/tmp"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"todo_1","name":"TodoWrite","input":{"todos":[{"content":"Create greeting.txt file","status":"in_progress","activeForm":"Creating greeting.txt file"},{"content":"Verify file contents","status":"pending","activeForm":"Verifying file contents"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"todo_1","content":""}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"write_1","name":"Write","input":{"file_path":"/tmp/greeting.txt","content":"Hello, World!"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"write_1","content":"File written successfully"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"todo_2","name":"TodoWrite","input":{"todos":[{"content":"Create greeting.txt file","status":"completed","activeForm":"Creating greeting.txt file"},{"content":"Verify file contents","status":"in_progress","activeForm":"Verifying file contents"}]}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"todo_2","content":""}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Created greeting.txt with Hello, World!","session_id":"conv-session"}

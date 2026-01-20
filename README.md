@@ -65,79 +65,50 @@ Download the latest release for your platform from the [releases page](https://g
 ## Usage
 
 ```bash
-# Direct file or path containing a SKILL.md
-skillet path/skillname[/SKILL.md]
+# See which skills and commands you can run
+skillet --list
 
-# Skill name shortcut (looks in all .claude/skills/<skill-name>/SKILL.md paths)
-skillet skill-name
+# By skill name (looks in all .claude/skills/<skill-name>/SKILL.md paths)
+skillet skill-or-command-name
 
-# Remote URL
+# By command name (looks in all .claude/skills/<namespace>/<command>.md paths)
+skillet namespace:command
+
+# Run a remote URL
 skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 ```
 
 > [!NOTICE]
-> **Skills can be a security risk.** Skills can execute commands, exfiltrate data, and modify files. Only use skills from sources you trust.
+> **Skills are a security risk.** Skills can execute commands, exfiltrate data, and modify files. Only use skills from sources you trust.
 
-## Command-line Options
+## Parse or Review History
 
-| Flag            | Description                                                         |
-| --------------- | ------------------------------------------------------------------- |
-| `--help`        | Show help message                                                   |
-| `--version`     | Show version information                                            |
-| `--verbose`     | Show verbose output including raw JSON stream                       |
-| `--usage`       | Show token usage statistics after execution                         |
-| `--dry-run`     | Show the command that would be executed without running it          |
-| `-q`, `--quiet` | Quiet mode - suppress all output except errors                      |
-| `--color`       | Control color output: `auto` (default), `always`, or `never`        |
-| `--prompt`      | Optional prompt to pass to Claude (default: uses skill description) |
+Skillet can format Claude's history files or `stream-json` output.
 
-## SKILL.md Format
+- Review past Claude sessions
+- Browse conversation history logs in `~/.claude/projects/`
+- Pipe live Claude output through Skillet's formatter
 
-A SKILL.md file must contain YAML frontmatter followed by markdown content:
+```bash
+# Format a saved JSONL file
+skillet --parse conversation.jsonl
 
-```yaml
----
-name: skill-name
-description: What this skill does and when to use it
-allowed-tools: Read,Write,Bash
-model: claude-opus-4-5-20251101
----
-# Skill Instructions
+# Pipe directly from Claude
+claude -p "explain this code" --verbose --output-format stream-json | skillet --parse
 
-Your skill instructions go here...
+# Read from stdin (explicit)
+cat session.jsonl | skillet --parse -
 ```
 
-### Frontmatter Fields
+### Browsing Claude History
 
-| Field                      | Required | Description                                         |
-| -------------------------- | -------- | --------------------------------------------------- |
-| `name`                     | Yes      | Skill name (lowercase, hyphens only, max 64 chars)  |
-| `description`              | Yes      | Description of what the skill does (max 1024 chars) |
-| `allowed-tools`            | No       | Space-delimited list of pre-approved tools          |
-| `model`                    | No       | Claude model to use (defaults to current model)     |
-| `license`                  | No       | License information                                 |
-| `compatibility`            | No       | Environment requirements (max 500 chars)            |
-| `metadata`                 | No       | Additional key-value metadata                       |
-| `version`                  | No       | Skill version                                       |
-| `disable-model-invocation` | No       | Prevent automatic invocation                        |
-| `mode`                     | No       | Mark as a mode command                              |
+Claude stores conversation logs in `~/.claude/projects/`.
+Here's a cool hack: you can browse them interactively with `fzf`:
 
-### Variable Interpolation
-
-Skillet automatically expands the following variables:
-
-- `{baseDir}` - Absolute path to the directory containing SKILL.md
-
-Example:
-
-```markdown
-Read configuration from {baseDir}/config.json
-```
-
-Becomes:
-
-```markdown
-Read configuration from /absolute/path/to/skill/config.json
+```bash
+# Browse history for current project with live preview
+find ~/.claude/projects/$(pwd | tr '/' '-') -name '*.jsonl' | \
+  fzf --preview '/tmp/skillet --parse {} --color=always --verbose'
 ```
 
 ## Testing
