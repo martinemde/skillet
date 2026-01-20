@@ -8,16 +8,13 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	// baseDirRegex matches {baseDir} variable references
-	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
 	// argumentsRegex matches $ARGUMENTS variable references
 	argumentsRegex = regexp.MustCompile(`\$ARGUMENTS`)
-	// nameRegex validates command name format (same as skill names)
-	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
 // Command represents a parsed command .md file
@@ -147,7 +144,7 @@ func parseFrontmatter(data string) (*Command, error) {
 
 // interpolateVariables replaces variables like {baseDir} and $ARGUMENTS with actual values
 func interpolateVariables(content, baseDir, arguments string) string {
-	content = baseDirRegex.ReplaceAllString(content, baseDir)
+	content = validation.InterpolateBaseDir(content, baseDir)
 	content = argumentsRegex.ReplaceAllString(content, arguments)
 	return content
 }
@@ -172,22 +169,8 @@ func extractFirstLine(content string) string {
 
 // Validate checks that the command is valid
 func (c *Command) Validate() error {
-	// Name is derived from filename, validate format
-	if c.Name == "" {
-		return fmt.Errorf("command name is required")
-	}
-
-	// Validate name format
-	if !nameRegex.MatchString(c.Name) {
-		return fmt.Errorf("invalid command name format: must be lowercase letters, numbers, and hyphens, not starting/ending with hyphen")
-	}
-
-	if len(c.Name) > 64 {
-		return fmt.Errorf("command name too long: max 64 characters, got %d", len(c.Name))
-	}
-
-	if strings.Contains(c.Name, "--") {
-		return fmt.Errorf("command name cannot contain consecutive hyphens")
+	if err := validation.ValidateName(c.Name, "command"); err != nil {
+		return err
 	}
 
 	// Content is required (a command must do something)

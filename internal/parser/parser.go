@@ -5,17 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
-)
-
-var (
-	// baseDirRegex matches {baseDir} variable references
-	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
-	// nameRegex validates skill name format
-	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
 // Skill represents a parsed SKILL.md file
@@ -135,27 +128,13 @@ func parseFrontmatter(data string) (*Skill, error) {
 
 // interpolateVariables replaces variables like {baseDir} with actual values
 func interpolateVariables(content, baseDir string) string {
-	// Replace {baseDir} with the actual base directory
-	return baseDirRegex.ReplaceAllString(content, baseDir)
+	return validation.InterpolateBaseDir(content, baseDir)
 }
 
 // Validate checks that required fields are present and valid
 func (s *Skill) Validate() error {
-	if s.Name == "" {
-		return fmt.Errorf("name is required")
-	}
-
-	// Validate name format
-	if !nameRegex.MatchString(s.Name) {
-		return fmt.Errorf("invalid name format: must be lowercase letters, numbers, and hyphens, not starting/ending with hyphen")
-	}
-
-	if len(s.Name) > 64 {
-		return fmt.Errorf("name too long: max 64 characters, got %d", len(s.Name))
-	}
-
-	if strings.Contains(s.Name, "--") {
-		return fmt.Errorf("name cannot contain consecutive hyphens")
+	if err := validation.ValidateName(s.Name, "skill"); err != nil {
+		return err
 	}
 
 	if s.Description == "" {

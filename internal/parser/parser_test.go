@@ -118,8 +118,8 @@ func TestParse_InvalidName(t *testing.T) {
 		t.Fatal("Expected error for invalid skill name, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "invalid name format") {
-		t.Errorf("Expected 'invalid name format' error, got: %v", err)
+	if !strings.Contains(err.Error(), "invalid skill name format") {
+		t.Errorf("Expected 'invalid skill name format' error, got: %v", err)
 	}
 }
 
@@ -167,37 +167,37 @@ func TestValidate_NameValidation(t *testing.T) {
 			name:      "invalid uppercase",
 			skillName: "My-Skill",
 			wantErr:   true,
-			errMsg:    "invalid name format",
+			errMsg:    "invalid skill name format",
 		},
 		{
 			name:      "invalid starting with hyphen",
 			skillName: "-myskill",
 			wantErr:   true,
-			errMsg:    "invalid name format",
+			errMsg:    "invalid skill name format",
 		},
 		{
 			name:      "invalid ending with hyphen",
 			skillName: "myskill-",
 			wantErr:   true,
-			errMsg:    "invalid name format",
+			errMsg:    "invalid skill name format",
 		},
 		{
 			name:      "invalid consecutive hyphens",
 			skillName: "my--skill",
 			wantErr:   true,
-			errMsg:    "consecutive hyphens",
+			errMsg:    "skill name cannot contain consecutive hyphens",
 		},
 		{
 			name:      "invalid too long",
 			skillName: strings.Repeat("a", 65),
 			wantErr:   true,
-			errMsg:    "name too long",
+			errMsg:    "skill name too long",
 		},
 		{
 			name:      "invalid empty",
 			skillName: "",
 			wantErr:   true,
-			errMsg:    "name is required",
+			errMsg:    "skill name is required",
 		},
 	}
 
