@@ -45,6 +45,13 @@ var boolFlags = map[string]bool{
 	"--quiet":   true,
 }
 
+// optionalValueFlags are flags that can optionally take a value.
+// When used without a value, they use the specified default.
+var optionalValueFlags = map[string]string{
+	"-parse":  "-",
+	"--parse": "-",
+}
+
 func main() {
 	if err := run(os.Args, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -64,18 +71,27 @@ func separateFlags(args []string) ([]string, []string) {
 
 		// Check if this is a flag (starts with -)
 		if len(arg) > 0 && arg[0] == '-' {
-			flagArgs = append(flagArgs, arg)
-
 			// Check if this flag takes a value
 			// Flags with = are handled by flag package (e.g., --prompt=value)
 			// Flags without = may have their value as the next argument
-			hasEquals := false
-			for _, c := range arg {
-				if c == '=' {
-					hasEquals = true
-					break
+			hasEquals := strings.Contains(arg, "=")
+
+			// Handle optional value flags (like --parse which defaults to stdin)
+			if defaultValue, isOptional := optionalValueFlags[arg]; isOptional && !hasEquals {
+				// Check if next arg exists and doesn't start with -
+				if i+1 < len(args) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
+					// Next arg is the value
+					flagArgs = append(flagArgs, arg)
+					i++
+					flagArgs = append(flagArgs, args[i])
+				} else {
+					// No value provided, use default
+					flagArgs = append(flagArgs, arg+"="+defaultValue)
 				}
+				continue
 			}
+
+			flagArgs = append(flagArgs, arg)
 
 			// If the flag doesn't contain =, and there's a next arg that doesn't start with -,
 			// it might be the flag's value. We include it with the flags.
@@ -109,6 +125,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
 		quiet          = flags.Bool("q", false, "Quiet mode - suppress all output except errors")
+		parseInput     = flags.String("parse", "", "Parse and format stream-json input (file path or - for stdin)")
 		prompt         = flags.String("prompt", "", "Prompt to pass to Claude (required if no skill provided)")
 		model          = flags.String("model", "", "Override model to use (overrides SKILL.md setting)")
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
@@ -138,6 +155,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if *listSkills {
 		return listAvailable(stdout, *colorFlag)
+	}
+
+	// Handle --parse mode: format stream-json input without running claude
+	if *parseInput != "" {
+		return runParseMode(*parseInput, stdout, *verbose, *debug, *showUsage, *colorFlag, *quiet)
 	}
 
 	// Parse skill or command if provided
@@ -278,6 +300,38 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+// runParseMode formats stream-json input from a file or stdin
+func runParseMode(input string, stdout io.Writer, verbose, debug, showUsage bool, colorMode string, quiet bool) error {
+	var reader io.Reader
+
+	if input == "-" {
+		reader = os.Stdin
+	} else {
+		file, err := os.Open(input)
+		if err != nil {
+			return fmt.Errorf("failed to open input file: %w", err)
+		}
+		defer func() { _ = file.Close() }()
+		reader = file
+	}
+
+	// In quiet mode, discard all output
+	output := stdout
+	if quiet {
+		output = io.Discard
+	}
+
+	form := formatter.New(formatter.Config{
+		Output:    output,
+		Verbose:   verbose,
+		Debug:     debug,
+		ShowUsage: showUsage,
+		Color:     colorMode,
+	})
+
+	return form.Format(reader)
+}
+
 func printHelp(w io.Writer, colorMode string) {
 	// Determine if we should use colors
 	useColors := color.ShouldUseColors(colorMode)
@@ -361,6 +415,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
 		fmt.Sprintf("  %s           Show the command without running it", optionStyle.Render("--dry-run")),
 		fmt.Sprintf("  %s, %s         Suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
+		fmt.Sprintf("  %s             Format stream-json input (file or - for stdin)", optionStyle.Render("--parse")),
 		fmt.Sprintf("  %s            Prompt to pass to Claude (required without skill)", optionStyle.Render("--prompt")),
 		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),

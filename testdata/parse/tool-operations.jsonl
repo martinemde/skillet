@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"test-session","tools":[],"model":"claude-opus-4-5-20251101","cwd":"/tmp"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool_1","name":"Read","input":{"file_path":"/tmp/test.txt"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool_1","content":"Hello from test file"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool_2","name":"Glob","input":{"pattern":"**/*.go"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool_2","content":"main.go\nparser.go\nformatter.go"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool_3","name":"Bash","input":{"command":"echo hello","description":"Print hello"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool_3","content":"hello"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Completed successfully","session_id":"test-session"}

@@ -27,8 +27,9 @@ type Message struct {
 
 // MessageContent represents the content of an assistant message
 type MessageContent struct {
-	Role    string    `json:"role"`
-	Content []Content `json:"content"`
+	Role       string          `json:"role"`
+	RawContent json.RawMessage `json:"content"`
+	Content    []Content       `json:"-"` // Populated after parsing RawContent
 }
 
 // Content represents a piece of content in a message
@@ -40,6 +41,31 @@ type Content struct {
 	Input     map[string]any `json:"input,omitempty"`
 	Content   any            `json:"content,omitempty"`
 	ToolUseID string         `json:"tool_use_id,omitempty"`
+}
+
+// parseMessageContent parses the RawContent field into the Content slice.
+// Handles both string content (user messages) and array content (assistant messages).
+func (m *MessageContent) parseContent() error {
+	if m.RawContent == nil {
+		return nil
+	}
+
+	// Try parsing as array first (most common for assistant messages)
+	var contentArray []Content
+	if err := json.Unmarshal(m.RawContent, &contentArray); err == nil {
+		m.Content = contentArray
+		return nil
+	}
+
+	// Try parsing as string (user messages in conversation logs)
+	var contentStr string
+	if err := json.Unmarshal(m.RawContent, &contentStr); err == nil {
+		m.Content = []Content{{Type: "text", Text: contentStr}}
+		return nil
+	}
+
+	// If neither works, leave Content empty
+	return nil
 }
 
 // Usage represents token usage information
@@ -172,6 +198,10 @@ func (f *Formatter) Format(input io.Reader) error {
 	}
 
 	scanner := bufio.NewScanner(input)
+	// Increase buffer size to handle large JSONL lines (e.g., tool results with lots of content)
+	// Default is 64KB, increase to 1MB
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScannerBuffer)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -193,6 +223,11 @@ func (f *Formatter) Format(input io.Reader) error {
 			}
 			// Skip invalid JSON - don't print to stdout
 			continue
+		}
+
+		// Parse message content (handles both string and array formats)
+		if msg.Message != nil {
+			_ = msg.Message.parseContent()
 		}
 
 		switch msg.Type {
