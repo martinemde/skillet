@@ -65,10 +65,13 @@ func (f *DirectoryFinder) Find(source skillpath.Source) ([]Skill, error) {
 		return skills, nil
 	}
 
-	// Walk the directory to find SKILL.md files (supports namespacing via subdirectories)
+	// Walk the directory to find SKILL.md files (supports namespacing via subdirectories).
+	// Errors are intentionally skipped: discovery should find all accessible skills rather
+	// than failing entirely due to permission issues on a single directory.
 	err := filepath.WalkDir(source.Path, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip directories we can't read
+			// Skip unreadable directories (e.g., permission denied) - continue discovering other skills
+			return nil
 		}
 
 		// Only process SKILL.md files

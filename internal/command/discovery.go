@@ -57,10 +57,13 @@ func (f *DirectoryFinder) Find(source commandpath.Source) ([]DiscoveredCommand, 
 		return commands, nil
 	}
 
-	// Walk the directory to find .md files (supports namespacing via subdirectories)
+	// Walk the directory to find .md files (supports namespacing via subdirectories).
+	// Errors are intentionally skipped: discovery should find all accessible commands rather
+	// than failing entirely due to permission issues on a single directory.
 	err := filepath.WalkDir(source.Path, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip directories we can't read
+			// Skip unreadable directories (e.g., permission denied) - continue discovering other commands
+			return nil
 		}
 
 		// Skip directories
