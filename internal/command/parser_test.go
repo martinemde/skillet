@@ -7,7 +7,7 @@ import (
 )
 
 func TestParse_SimpleCommand(t *testing.T) {
-	cmd, err := Parse("../../testdata/commands/simple-command.md")
+	cmd, err := Parse("../../testdata/commands/simple-command.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse simple command: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestParse_SimpleCommand(t *testing.T) {
 }
 
 func TestParse_ComprehensiveCommand(t *testing.T) {
-	cmd, err := Parse("../../testdata/commands/comprehensive-command.md")
+	cmd, err := Parse("../../testdata/commands/comprehensive-command.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse comprehensive command: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestParse_ComprehensiveCommand(t *testing.T) {
 }
 
 func TestParse_CommandWithoutFrontmatter(t *testing.T) {
-	cmd, err := Parse("../../testdata/commands/no-frontmatter-command.md")
+	cmd, err := Parse("../../testdata/commands/no-frontmatter-command.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse command without frontmatter: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestParse_CommandWithoutFrontmatter(t *testing.T) {
 }
 
 func TestParse_InvalidNameCommand(t *testing.T) {
-	_, err := Parse("../../testdata/commands/invalid-name-UPPERCASE.md")
+	_, err := Parse("../../testdata/commands/invalid-name-UPPERCASE.md", "")
 	if err == nil {
 		t.Fatal("Expected error for invalid command name, got nil")
 	}
@@ -103,7 +103,7 @@ func TestParse_InvalidNameCommand(t *testing.T) {
 }
 
 func TestParse_NonexistentFile(t *testing.T) {
-	_, err := Parse("../../testdata/commands/nonexistent.md")
+	_, err := Parse("../../testdata/commands/nonexistent.md", "")
 	if err == nil {
 		t.Fatal("Expected error for nonexistent file, got nil")
 	}
@@ -211,7 +211,7 @@ func TestInterpolateVariables(t *testing.T) {
 	baseDir := "/path/to/command"
 	content := "Base directory is {baseDir} and config is at {baseDir}/config.json"
 
-	result := interpolateVariables(content, baseDir)
+	result := interpolateVariables(content, baseDir, "")
 
 	expected := "Base directory is /path/to/command and config is at /path/to/command/config.json"
 	if result != expected {
@@ -219,9 +219,39 @@ func TestInterpolateVariables(t *testing.T) {
 	}
 }
 
+func TestInterpolateVariables_Arguments(t *testing.T) {
+	content := "Process file $ARGUMENTS with options"
+	result := interpolateVariables(content, "/base", "myfile.txt --verbose")
+
+	expected := "Process file myfile.txt --verbose with options"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_MultipleArguments(t *testing.T) {
+	content := "First: $ARGUMENTS, Second: $ARGUMENTS"
+	result := interpolateVariables(content, "/base", "arg1 arg2")
+
+	expected := "First: arg1 arg2, Second: arg1 arg2"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_EmptyArguments(t *testing.T) {
+	content := "Process $ARGUMENTS here"
+	result := interpolateVariables(content, "/base", "")
+
+	expected := "Process  here"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
 func TestParseWithBaseDir(t *testing.T) {
 	customBaseDir := "/custom/base"
-	cmd, err := ParseWithBaseDir("../../testdata/commands/simple-command.md", customBaseDir)
+	cmd, err := ParseWithBaseDir("../../testdata/commands/simple-command.md", customBaseDir, "")
 	if err != nil {
 		t.Fatalf("Failed to parse command: %v", err)
 	}
@@ -280,7 +310,7 @@ func TestExtractFirstLine(t *testing.T) {
 }
 
 func TestParse_NamespacedCommand(t *testing.T) {
-	cmd, err := Parse("../../testdata/commands/frontend/component.md")
+	cmd, err := Parse("../../testdata/commands/frontend/component.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse namespaced command: %v", err)
 	}
@@ -294,5 +324,23 @@ func TestParse_NamespacedCommand(t *testing.T) {
 	absPath, _ := filepath.Abs("../../testdata/commands/frontend")
 	if cmd.BaseDir != absPath {
 		t.Errorf("Expected BaseDir '%s', got '%s'", absPath, cmd.BaseDir)
+	}
+}
+
+func TestParse_WithArguments(t *testing.T) {
+	// comprehensive-command.md contains "$ARGUMENTS" in its content
+	cmd, err := Parse("../../testdata/commands/comprehensive-command.md", "myfile.txt --verbose")
+	if err != nil {
+		t.Fatalf("Failed to parse command with arguments: %v", err)
+	}
+
+	// Verify $ARGUMENTS was replaced in the content
+	if strings.Contains(cmd.Content, "$ARGUMENTS") {
+		t.Error("Content should not contain literal $ARGUMENTS after interpolation")
+	}
+
+	// Verify the arguments were inserted
+	if !strings.Contains(cmd.Content, "myfile.txt --verbose") {
+		t.Errorf("Content should contain interpolated arguments, got: %s", cmd.Content)
 	}
 }

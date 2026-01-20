@@ -14,6 +14,8 @@ import (
 var (
 	// baseDirRegex matches {baseDir} variable references
 	baseDirRegex = regexp.MustCompile(`\{baseDir\}`)
+	// argumentsRegex matches $ARGUMENTS variable references
+	argumentsRegex = regexp.MustCompile(`\$ARGUMENTS`)
 	// nameRegex validates command name format (same as skill names)
 	nameRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
@@ -36,13 +38,14 @@ type Command struct {
 }
 
 // Parse reads and parses a command .md file
-func Parse(commandPath string) (*Command, error) {
-	return ParseWithBaseDir(commandPath, "")
+func Parse(commandPath string, arguments string) (*Command, error) {
+	return ParseWithBaseDir(commandPath, "", arguments)
 }
 
 // ParseWithBaseDir reads and parses a command .md file with an optional custom base directory
 // If baseDir is empty, it defaults to the directory containing the command file
-func ParseWithBaseDir(commandPath string, baseDir string) (*Command, error) {
+// The arguments string replaces $ARGUMENTS in the command content
+func ParseWithBaseDir(commandPath, baseDir, arguments string) (*Command, error) {
 	// Resolve absolute path
 	absPath, err := filepath.Abs(commandPath)
 	if err != nil {
@@ -74,7 +77,7 @@ func ParseWithBaseDir(commandPath string, baseDir string) (*Command, error) {
 	cmd.BaseDir = baseDir
 
 	// Interpolate variables
-	cmd.Content = interpolateVariables(cmd.Content, baseDir)
+	cmd.Content = interpolateVariables(cmd.Content, baseDir, arguments)
 
 	// If description is not set, use the first non-empty line of content
 	if cmd.Description == "" {
@@ -142,10 +145,11 @@ func parseFrontmatter(data string) (*Command, error) {
 	return cmd, nil
 }
 
-// interpolateVariables replaces variables like {baseDir} with actual values
-func interpolateVariables(content, baseDir string) string {
-	// Replace {baseDir} with the actual base directory
-	return baseDirRegex.ReplaceAllString(content, baseDir)
+// interpolateVariables replaces variables like {baseDir} and $ARGUMENTS with actual values
+func interpolateVariables(content, baseDir, arguments string) string {
+	content = baseDirRegex.ReplaceAllString(content, baseDir)
+	content = argumentsRegex.ReplaceAllString(content, arguments)
+	return content
 }
 
 // extractFirstLine gets the first non-empty, non-heading line as a description

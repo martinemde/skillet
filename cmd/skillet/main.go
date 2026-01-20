@@ -168,10 +168,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 			}
 			resourceName = skill.Name
 		case resolver.ResourceTypeCommand:
+			arguments := strings.Join(posArgs[1:], " ")
 			if result.BaseURL != "" {
-				cmd, err = command.ParseWithBaseDir(result.Path, result.BaseURL)
+				cmd, err = command.ParseWithBaseDir(result.Path, result.BaseURL, arguments)
 			} else {
-				cmd, err = command.Parse(result.Path)
+				cmd, err = command.Parse(result.Path, arguments)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to parse command file: %w", err)
