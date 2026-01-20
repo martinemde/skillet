@@ -81,3 +81,34 @@ func NewWithSources(sources []Source) *Path {
 func (p *Path) Sources() []Source {
 	return p.sources
 }
+
+// RelativePath returns a display-friendly relative path.
+// It tries to make the path relative to common reference points:
+// 1. Home directory (displayed as ~/...)
+// 2. Current directory (displayed as ./... or relative path)
+// 3. Falls back to absolute path if neither is shorter
+func RelativePath(absPath string) string {
+	// Try to make relative to home directory
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		if rel, err := filepath.Rel(homeDir, absPath); err == nil {
+			if len(rel) < len(absPath) {
+				return "~/" + rel
+			}
+		}
+	}
+
+	// Try to make relative to current directory
+	wd, err := os.Getwd()
+	if err == nil {
+		if rel, err := filepath.Rel(wd, absPath); err == nil {
+			if len(rel) < len(absPath) && rel[0] != '.' {
+				return "./" + rel
+			} else if len(rel) < len(absPath) {
+				return rel
+			}
+		}
+	}
+
+	return absPath
+}
