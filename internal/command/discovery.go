@@ -25,6 +25,19 @@ type DiscoveredCommand struct {
 	OvershadowedBy string
 }
 
+// QualifiedName returns the qualified name for resolution: "namespace:name" or just "name" if no namespace
+func (c DiscoveredCommand) QualifiedName() string {
+	if c.Namespace != "" {
+		return c.Namespace + ":" + c.Name
+	}
+	return c.Name
+}
+
+// Key returns the unique identifier used for overshadowing, same as QualifiedName
+func (c DiscoveredCommand) Key() string {
+	return c.QualifiedName()
+}
+
 // Finder is an interface for finding commands in a source directory.
 type Finder interface {
 	// Find discovers commands in the given source directory.
@@ -131,7 +144,7 @@ func (d *Discoverer) Discover() ([]DiscoveredCommand, error) {
 		}
 
 		for _, cmd := range commands {
-			key := cmd.Namespace + ":" + cmd.Name
+			key := cmd.Key()
 			if existingPath, exists := seen[key]; exists {
 				// This command is overshadowed
 				cmd.Overshadowed = true

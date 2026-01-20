@@ -217,3 +217,57 @@ func TestRelativePath(t *testing.T) {
 		t.Errorf("expected relative path, got absolute: %s", relPath2)
 	}
 }
+
+func TestDiscoveredCommand_QualifiedName(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmd      DiscoveredCommand
+		expected string
+	}{
+		{
+			name:     "unnamespaced",
+			cmd:      DiscoveredCommand{Name: "test", Namespace: ""},
+			expected: "test",
+		},
+		{
+			name:     "namespaced",
+			cmd:      DiscoveredCommand{Name: "test", Namespace: "frontend"},
+			expected: "frontend:test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cmd.QualifiedName(); got != tt.expected {
+				t.Errorf("QualifiedName() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDiscoveredCommand_Key(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmd      DiscoveredCommand
+		expected string
+	}{
+		{
+			name:     "unnamespaced",
+			cmd:      DiscoveredCommand{Name: "test", Namespace: ""},
+			expected: "test",
+		},
+		{
+			name:     "namespaced",
+			cmd:      DiscoveredCommand{Name: "test", Namespace: "frontend"},
+			expected: "frontend:test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cmd.Key(); got != tt.expected {
+				t.Errorf("Key() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
