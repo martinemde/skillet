@@ -18,8 +18,8 @@ import (
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
-	"github.com/martinemde/skillet/internal/parser"
 	"github.com/martinemde/skillet/internal/resolver"
+	"github.com/martinemde/skillet/internal/skill"
 	"github.com/martinemde/skillet/internal/skillpath"
 )
 
@@ -141,7 +141,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	// Parse skill or command if provided
-	var skill *parser.Skill
+	var parsedSkill *skill.Skill
 	var cmd *command.Command
 	var resourceName string
 	var resourcePath string
@@ -159,14 +159,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		switch result.Type {
 		case resolver.ResourceTypeSkill:
 			if result.BaseURL != "" {
-				skill, err = parser.ParseWithBaseDir(result.Path, result.BaseURL)
+				parsedSkill, err = skill.ParseWithBaseDir(result.Path, result.BaseURL)
 			} else {
-				skill, err = parser.Parse(result.Path)
+				parsedSkill, err = skill.Parse(result.Path)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to parse skill file: %w", err)
 			}
-			resourceName = skill.Name
+			resourceName = parsedSkill.Name
 		case resolver.ResourceTypeCommand:
 			arguments := strings.Join(posArgs[1:], " ")
 			if result.BaseURL != "" {
@@ -182,17 +182,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	// Require --prompt when no skill/command is provided
-	if skill == nil && cmd == nil && *prompt == "" {
+	if parsedSkill == nil && cmd == nil && *prompt == "" {
 		printHelp(stdout, *colorFlag)
 		return nil
 	}
 
 	// Build executor config with resolved values
 	config := executor.Config{
-		Prompt:         resolvePromptFromResource(*prompt, skill, cmd),
-		SystemPrompt:   buildSystemPromptFromResource(skill, cmd),
-		Model:          resolveString(*model, resourceModel(skill, cmd)),
-		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(skill, cmd)),
+		Prompt:         resolvePromptFromResource(*prompt, parsedSkill, cmd),
+		SystemPrompt:   buildSystemPromptFromResource(parsedSkill, cmd),
+		Model:          resolveString(*model, resourceModel(parsedSkill, cmd)),
+		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
 		PermissionMode: *permissionMode,
 		OutputFormat:   *outputFormat,
 	}
@@ -630,7 +630,7 @@ func formatSourceInfo(sourceName, namespace string) string {
 	return sourceName
 }
 
-func resourceModel(s *parser.Skill, c *command.Command) string {
+func resourceModel(s *skill.Skill, c *command.Command) string {
 	if s != nil && s.Model != "" && s.Model != "inherit" {
 		return s.Model
 	}
@@ -640,7 +640,7 @@ func resourceModel(s *parser.Skill, c *command.Command) string {
 	return ""
 }
 
-func resourceAllowedTools(s *parser.Skill, c *command.Command) string {
+func resourceAllowedTools(s *skill.Skill, c *command.Command) string {
 	if s != nil && s.AllowedTools != "" {
 		return s.AllowedTools
 	}
@@ -650,7 +650,7 @@ func resourceAllowedTools(s *parser.Skill, c *command.Command) string {
 	return ""
 }
 
-func resolvePromptFromResource(cliPrompt string, s *parser.Skill, c *command.Command) string {
+func resolvePromptFromResource(cliPrompt string, s *skill.Skill, c *command.Command) string {
 	if cliPrompt != "" {
 		return cliPrompt
 	}
@@ -670,7 +670,7 @@ func resolveString(override, fallback string) string {
 	return fallback
 }
 
-func buildSystemPromptFromResource(s *parser.Skill, c *command.Command) string {
+func buildSystemPromptFromResource(s *skill.Skill, c *command.Command) string {
 	if s != nil {
 		return buildSkillSystemPrompt(s)
 	}
@@ -680,7 +680,7 @@ func buildSystemPromptFromResource(s *parser.Skill, c *command.Command) string {
 	return ""
 }
 
-func buildSkillSystemPrompt(s *parser.Skill) string {
+func buildSkillSystemPrompt(s *skill.Skill) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# %s\n\n", s.Name))
 	sb.WriteString(fmt.Sprintf("%s\n\n", s.Description))

@@ -1,4 +1,4 @@
-package parser
+package skill
 
 import (
 	"path/filepath"
