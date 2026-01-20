@@ -24,6 +24,8 @@ const (
 // ResourceType indicates what type of resource was resolved
 type ResourceType int
 
+// Resource type constants. Order matters: lower values have higher precedence
+// in resolution when specificity and priority are equal (skills are preferred over commands).
 const (
 	// ResourceTypeSkill indicates the resolved resource is a skill (SKILL.md)
 	ResourceTypeSkill ResourceType = iota
