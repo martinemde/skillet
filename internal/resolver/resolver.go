@@ -61,6 +61,42 @@ type match struct {
 	name         string           // for error messages
 }
 
+// matchCandidate evaluates if a resource matches the query and returns the match or nil
+func matchCandidate(queryNS, queryName, name, namespace, path string, priority int, resourceType ResourceType, overshadowed bool) *match {
+	if overshadowed {
+		return nil
+	}
+	if !strings.EqualFold(name, queryName) {
+		return nil
+	}
+
+	var specificity matchSpecificity
+	if queryNS != "" {
+		// Query has explicit namespace
+		if strings.EqualFold(namespace, queryNS) {
+			specificity = exactNamespaceMatch
+		} else {
+			return nil // Namespace doesn't match
+		}
+	} else {
+		// Query has no namespace
+		if namespace == "" {
+			specificity = unnamespacedExact
+		} else {
+			specificity = namespacedFallback
+		}
+	}
+
+	return &match{
+		path:         path,
+		resourceType: resourceType,
+		priority:     priority,
+		specificity:  specificity,
+		namespace:    namespace,
+		name:         name,
+	}
+}
+
 // Resolver handles namespace-aware resolution of skills and commands
 type Resolver struct {
 	skillPath *skillpath.Path
@@ -168,40 +204,9 @@ func (r *Resolver) resolveByName(query string) (*ResolveResult, error) {
 
 	// Collect skill matches
 	for _, skill := range skills {
-		if skill.Overshadowed {
-			continue // Skip overshadowed skills
+		if m := matchCandidate(queryNS, queryName, skill.Name, skill.Namespace, skill.Path, skill.Source.Priority, ResourceTypeSkill, skill.Overshadowed); m != nil {
+			matches = append(matches, *m)
 		}
-
-		// Case-insensitive name matching
-		if !strings.EqualFold(skill.Name, queryName) {
-			continue
-		}
-
-		var specificity matchSpecificity
-		if queryNS != "" {
-			// Query has explicit namespace
-			if strings.EqualFold(skill.Namespace, queryNS) {
-				specificity = exactNamespaceMatch
-			} else {
-				continue // Namespace doesn't match, skip
-			}
-		} else {
-			// Query has no namespace
-			if skill.Namespace == "" {
-				specificity = unnamespacedExact
-			} else {
-				specificity = namespacedFallback
-			}
-		}
-
-		matches = append(matches, match{
-			path:         skill.Path,
-			resourceType: ResourceTypeSkill,
-			priority:     skill.Source.Priority,
-			specificity:  specificity,
-			namespace:    skill.Namespace,
-			name:         skill.Name,
-		})
 	}
 
 	// Discover all commands
@@ -213,40 +218,9 @@ func (r *Resolver) resolveByName(query string) (*ResolveResult, error) {
 
 	// Collect command matches
 	for _, cmd := range commands {
-		if cmd.Overshadowed {
-			continue // Skip overshadowed commands
+		if m := matchCandidate(queryNS, queryName, cmd.Name, cmd.Namespace, cmd.Path, cmd.Source.Priority, ResourceTypeCommand, cmd.Overshadowed); m != nil {
+			matches = append(matches, *m)
 		}
-
-		// Case-insensitive name matching
-		if !strings.EqualFold(cmd.Name, queryName) {
-			continue
-		}
-
-		var specificity matchSpecificity
-		if queryNS != "" {
-			// Query has explicit namespace
-			if strings.EqualFold(cmd.Namespace, queryNS) {
-				specificity = exactNamespaceMatch
-			} else {
-				continue // Namespace doesn't match, skip
-			}
-		} else {
-			// Query has no namespace
-			if cmd.Namespace == "" {
-				specificity = unnamespacedExact
-			} else {
-				specificity = namespacedFallback
-			}
-		}
-
-		matches = append(matches, match{
-			path:         cmd.Path,
-			resourceType: ResourceTypeCommand,
-			priority:     cmd.Source.Priority,
-			specificity:  specificity,
-			namespace:    cmd.Namespace,
-			name:         cmd.Name,
-		})
 	}
 
 	if len(matches) == 0 {
