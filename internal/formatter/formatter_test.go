@@ -238,22 +238,15 @@ func TestFormat_EmptyLines(t *testing.T) {
 func TestPrintUsage(t *testing.T) {
 	var output bytes.Buffer
 
+	// Test usage printing through the complete Format flow
+	input := `{"type":"result","result":"Task complete","is_error":false,"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":25,"cache_creation_input_tokens":10,"cache_creation":{"ephemeral_5m_input_tokens":5},"server_tool_use":{"web_search_requests":3}}}`
+
 	f := New(Config{Output: &output, ShowUsage: true})
+	err := f.Format(strings.NewReader(input))
 
-	usage := &Usage{
-		InputTokens:              100,
-		OutputTokens:             50,
-		CacheReadInputTokens:     25,
-		CacheCreationInputTokens: 10,
-		CacheCreation: map[string]int{
-			"ephemeral_5m_input_tokens": 5,
-		},
-		ServerToolUse: map[string]int{
-			"web_search_requests": 3,
-		},
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
 	}
-
-	f.printUsage(usage)
 
 	result := output.String()
 
