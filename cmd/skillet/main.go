@@ -144,6 +144,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	var skill *parser.Skill
 	var cmd *command.Command
 	var resourceName string
+	var resourcePath string
 	if len(posArgs) > 0 {
 		result, err := resolver.Resolve(posArgs[0])
 		if err != nil {
@@ -152,6 +153,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		if result.IsURL {
 			defer func() { _ = os.Remove(result.Path) }()
 		}
+
+		resourcePath = result.Path
 
 		switch result.Type {
 		case resolver.ResourceTypeSkill:
@@ -220,6 +223,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		ShowUsage:       *showUsage,
 		PassthroughMode: *outputFormat != "",
 		SkillName:       resourceName,
+		SkillPath:       resourcePath,
 		Color:           *colorFlag,
 	})
 
