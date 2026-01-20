@@ -438,7 +438,7 @@ func TestDirectoryFinder_Find_NamespacedSkills(t *testing.T) {
 	}
 
 	// Check unnamespaced skill
-	if skill, ok := foundSkills[":unnamespaced-skill"]; !ok {
+	if skill, ok := foundSkills["unnamespaced-skill"]; !ok {
 		t.Error("expected to find unnamespaced-skill")
 	} else if skill.Namespace != "" {
 		t.Errorf("expected unnamespaced-skill to have empty namespace, got %q", skill.Namespace)
@@ -466,7 +466,7 @@ func TestDirectoryFinder_Find_NamespacedSkills(t *testing.T) {
 	}
 }
 
-func TestSkill_FullName(t *testing.T) {
+func TestSkill_QualifiedName(t *testing.T) {
 	tests := []struct {
 		name     string
 		skill    Skill
@@ -486,8 +486,8 @@ func TestSkill_FullName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.skill.FullName(); got != tt.expected {
-				t.Errorf("FullName() = %q, want %q", got, tt.expected)
+			if got := tt.skill.QualifiedName(); got != tt.expected {
+				t.Errorf("QualifiedName() = %q, want %q", got, tt.expected)
 			}
 		})
 	}
@@ -502,7 +502,7 @@ func TestSkill_Key(t *testing.T) {
 		{
 			name:     "unnamespaced",
 			skill:    Skill{Name: "test", Namespace: ""},
-			expected: ":test",
+			expected: "test",
 		},
 		{
 			name:     "namespaced",
@@ -602,7 +602,7 @@ func TestDiscoverer_Discover_NamespaceSorting(t *testing.T) {
 
 	// Should be sorted: unnamespaced first (alphabetically), then by namespace, then by name
 	// Expected order: alpha, zebra, backend:test, frontend:alpha, frontend:test
-	expectedOrder := []string{":alpha", ":zebra", "backend:test", "frontend:alpha", "frontend:test"}
+	expectedOrder := []string{"alpha", "zebra", "backend:test", "frontend:alpha", "frontend:test"}
 	for i, skill := range skills {
 		if skill.Key() != expectedOrder[i] {
 			t.Errorf("expected skill %d to be %s, got %s", i, expectedOrder[i], skill.Key())

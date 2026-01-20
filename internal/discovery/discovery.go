@@ -28,17 +28,17 @@ type Skill struct {
 	OvershadowedBy string
 }
 
-// FullName returns the display name in "namespace:name" format, or just "name" if no namespace
-func (s Skill) FullName() string {
+// QualifiedName returns the qualified name for resolution: "namespace:name" or just "name" if no namespace
+func (s Skill) QualifiedName() string {
 	if s.Namespace != "" {
 		return s.Namespace + ":" + s.Name
 	}
 	return s.Name
 }
 
-// Key returns the unique identifier used for overshadowing: "namespace:name"
+// Key returns the unique identifier used for overshadowing, same as QualifiedName
 func (s Skill) Key() string {
-	return s.Namespace + ":" + s.Name
+	return s.QualifiedName()
 }
 
 // Finder is an interface for finding skills in a source directory.
