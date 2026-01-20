@@ -8,10 +8,17 @@ import (
 	"github.com/martinemde/skillet/internal/skillpath"
 )
 
-// createSkillDir creates a skill directory with SKILL.md file
-func createSkillDir(t *testing.T, baseDir, skillName string) string {
+// createSkillDir creates a skill directory with SKILL.md file.
+// If namespace is non-empty, creates baseDir/namespace/skillName/SKILL.md
+// Otherwise creates baseDir/skillName/SKILL.md
+func createSkillDir(t *testing.T, baseDir, skillName, namespace string) string {
 	t.Helper()
-	skillDir := filepath.Join(baseDir, skillName)
+	var skillDir string
+	if namespace != "" {
+		skillDir = filepath.Join(baseDir, namespace, skillName)
+	} else {
+		skillDir = filepath.Join(baseDir, skillName)
+	}
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatalf("failed to create skill directory: %v", err)
 	}
@@ -30,9 +37,9 @@ func TestDirectoryFinder_Find(t *testing.T) {
 	}
 
 	// Create some test skills
-	createSkillDir(t, skillsDir, "alpha-skill")
-	createSkillDir(t, skillsDir, "beta-skill")
-	createSkillDir(t, skillsDir, "gamma-skill")
+	createSkillDir(t, skillsDir, "alpha-skill", "")
+	createSkillDir(t, skillsDir, "beta-skill", "")
+	createSkillDir(t, skillsDir, "gamma-skill", "")
 
 	// Create a non-skill directory (no SKILL.md)
 	nonSkillDir := filepath.Join(skillsDir, "not-a-skill")
@@ -132,16 +139,16 @@ func TestDiscoverer_Discover(t *testing.T) {
 	if err := os.MkdirAll(projectSkillsDir, 0755); err != nil {
 		t.Fatalf("failed to create project skills directory: %v", err)
 	}
-	createSkillDir(t, projectSkillsDir, "common-skill")
-	createSkillDir(t, projectSkillsDir, "project-only")
+	createSkillDir(t, projectSkillsDir, "common-skill", "")
+	createSkillDir(t, projectSkillsDir, "project-only", "")
 
 	// Create user-scoped skills
 	userSkillsDir := filepath.Join(tmpDir, "user", skillpath.ClaudeDir, skillpath.SkillsDir)
 	if err := os.MkdirAll(userSkillsDir, 0755); err != nil {
 		t.Fatalf("failed to create user skills directory: %v", err)
 	}
-	createSkillDir(t, userSkillsDir, "common-skill") // This should be overshadowed
-	createSkillDir(t, userSkillsDir, "user-only")
+	createSkillDir(t, userSkillsDir, "common-skill", "") // This should be overshadowed
+	createSkillDir(t, userSkillsDir, "user-only", "")
 
 	// Create custom sources
 	sources := []skillpath.Source{
@@ -190,9 +197,9 @@ func TestDiscoverer_Discover_Sorting(t *testing.T) {
 		t.Fatalf("failed to create skills directory: %v", err)
 	}
 
-	createSkillDir(t, skillsDir, "zebra")
-	createSkillDir(t, skillsDir, "alpha")
-	createSkillDir(t, skillsDir, "middle")
+	createSkillDir(t, skillsDir, "zebra", "")
+	createSkillDir(t, skillsDir, "alpha", "")
+	createSkillDir(t, skillsDir, "middle", "")
 
 	sources := []skillpath.Source{
 		{Path: skillsDir, Name: "test", Priority: 0},
@@ -227,9 +234,9 @@ func TestDiscoverer_DiscoverByName(t *testing.T) {
 		t.Fatalf("failed to create source2 directory: %v", err)
 	}
 
-	createSkillDir(t, source1Dir, "target-skill")
-	createSkillDir(t, source1Dir, "other-skill")
-	createSkillDir(t, source2Dir, "target-skill")
+	createSkillDir(t, source1Dir, "target-skill", "")
+	createSkillDir(t, source1Dir, "other-skill", "")
+	createSkillDir(t, source2Dir, "target-skill", "")
 
 	sources := []skillpath.Source{
 		{Path: source1Dir, Name: "source1", Priority: 0},
@@ -351,8 +358,8 @@ func TestDiscoverer_OvershadowedBy(t *testing.T) {
 		t.Fatalf("failed to create source2 directory: %v", err)
 	}
 
-	createSkillDir(t, source1Dir, "shared-skill")
-	createSkillDir(t, source2Dir, "shared-skill")
+	createSkillDir(t, source1Dir, "shared-skill", "")
+	createSkillDir(t, source2Dir, "shared-skill", "")
 
 	sources := []skillpath.Source{
 		{Path: source1Dir, Name: "high-priority", Priority: 0},
@@ -386,20 +393,6 @@ func TestDiscoverer_OvershadowedBy(t *testing.T) {
 	}
 }
 
-// createNamespacedSkillDir creates a namespaced skill directory with SKILL.md file
-func createNamespacedSkillDir(t *testing.T, baseDir, namespace, skillName string) string {
-	t.Helper()
-	skillDir := filepath.Join(baseDir, namespace, skillName)
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("failed to create namespaced skill directory: %v", err)
-	}
-	skillFile := filepath.Join(skillDir, skillpath.SkillFile)
-	if err := os.WriteFile(skillFile, []byte("test content"), 0644); err != nil {
-		t.Fatalf("failed to create skill file: %v", err)
-	}
-	return skillDir
-}
-
 func TestDirectoryFinder_Find_NamespacedSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 	skillsDir := filepath.Join(tmpDir, skillpath.ClaudeDir, skillpath.SkillsDir)
@@ -408,12 +401,12 @@ func TestDirectoryFinder_Find_NamespacedSkills(t *testing.T) {
 	}
 
 	// Create unnamespaced skill
-	createSkillDir(t, skillsDir, "unnamespaced-skill")
+	createSkillDir(t, skillsDir, "unnamespaced-skill", "")
 
 	// Create namespaced skills
-	createNamespacedSkillDir(t, skillsDir, "frontend", "test-skill")
-	createNamespacedSkillDir(t, skillsDir, "backend", "test-skill")
-	createNamespacedSkillDir(t, skillsDir, "frontend", "other-skill")
+	createSkillDir(t, skillsDir, "test-skill", "frontend")
+	createSkillDir(t, skillsDir, "test-skill", "backend")
+	createSkillDir(t, skillsDir, "other-skill", "frontend")
 
 	finder := &DirectoryFinder{}
 	source := skillpath.Source{
@@ -528,15 +521,15 @@ func TestDiscoverer_Discover_NamespacedOvershadowing(t *testing.T) {
 	if err := os.MkdirAll(projectSkillsDir, 0755); err != nil {
 		t.Fatalf("failed to create project skills directory: %v", err)
 	}
-	createNamespacedSkillDir(t, projectSkillsDir, "frontend", "common-skill")
+	createSkillDir(t, projectSkillsDir, "common-skill", "frontend")
 
 	// Create user-scoped skills (lower priority)
 	userSkillsDir := filepath.Join(tmpDir, "user", skillpath.ClaudeDir, skillpath.SkillsDir)
 	if err := os.MkdirAll(userSkillsDir, 0755); err != nil {
 		t.Fatalf("failed to create user skills directory: %v", err)
 	}
-	createNamespacedSkillDir(t, userSkillsDir, "frontend", "common-skill") // Should be overshadowed
-	createNamespacedSkillDir(t, userSkillsDir, "backend", "common-skill")  // Different namespace, not overshadowed
+	createSkillDir(t, userSkillsDir, "common-skill", "frontend") // Should be overshadowed
+	createSkillDir(t, userSkillsDir, "common-skill", "backend")  // Different namespace, not overshadowed
 
 	sources := []skillpath.Source{
 		{Path: projectSkillsDir, Name: "project", Priority: 0},
@@ -583,11 +576,11 @@ func TestDiscoverer_Discover_NamespaceSorting(t *testing.T) {
 	}
 
 	// Create skills with various namespaces
-	createSkillDir(t, skillsDir, "zebra")                       // unnamespaced
-	createSkillDir(t, skillsDir, "alpha")                       // unnamespaced
-	createNamespacedSkillDir(t, skillsDir, "frontend", "test")  // frontend:test
-	createNamespacedSkillDir(t, skillsDir, "backend", "test")   // backend:test
-	createNamespacedSkillDir(t, skillsDir, "frontend", "alpha") // frontend:alpha
+	createSkillDir(t, skillsDir, "zebra", "")         // unnamespaced
+	createSkillDir(t, skillsDir, "alpha", "")         // unnamespaced
+	createSkillDir(t, skillsDir, "test", "frontend")  // frontend:test
+	createSkillDir(t, skillsDir, "test", "backend")   // backend:test
+	createSkillDir(t, skillsDir, "alpha", "frontend") // frontend:alpha
 
 	sources := []skillpath.Source{
 		{Path: skillsDir, Name: "test", Priority: 0},
