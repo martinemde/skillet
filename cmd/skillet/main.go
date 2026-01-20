@@ -365,7 +365,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
-		fmt.Sprintf("  %s     Output format (default: stream-json)", optionStyle.Render("--output-format")),
+		fmt.Sprintf("  %s     Output format (overrides pretty formatting)", optionStyle.Render("--output-format")),
 		fmt.Sprintf("  %s             Color output: auto, always, never", optionStyle.Render("--color")),
 	)
 
