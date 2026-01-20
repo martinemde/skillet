@@ -497,6 +497,16 @@ func listAvailable(w io.Writer, colorMode string) error {
 		namespaceStyle = namespaceStyle.Foreground(lipgloss.Color("8"))
 	}
 
+	// Define formatting styles
+	styles := listStyles{
+		nameStyle:              nameStyle,
+		pathStyle:              pathStyle,
+		overshadowedNameStyle:  overshadowedNameStyle,
+		overshadowedPathStyle:  overshadowedPathStyle,
+		overshadowedLabelStyle: overshadowedLabelStyle,
+		namespaceStyle:         namespaceStyle,
+	}
+
 	var lines []string
 	lines = append(lines, titleStyle.Render("Available Skills and Commands"))
 	lines = append(lines, "")
@@ -511,34 +521,17 @@ func listAvailable(w io.Writer, colorMode string) error {
 			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
 		}
 	} else {
-		// Find the longest skill display name for alignment
-		maxNameLen := 0
-		for _, skill := range skills {
-			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
-			displayLen := len(skill.Name) + len(" ("+sourceInfo+")")
-			if displayLen > maxNameLen {
-				maxNameLen = displayLen
+		skillItems := make([]listableItem, len(skills))
+		for i, s := range skills {
+			skillItems[i] = listableItem{
+				Name:         s.Name,
+				Namespace:    s.Namespace,
+				SourceName:   s.Source.Name,
+				Path:         discovery.RelativePath(s),
+				Overshadowed: s.Overshadowed,
 			}
 		}
-
-		for _, skill := range skills {
-			relPath := discovery.RelativePath(skill)
-			sourceInfo := formatSourceInfo(skill.Source.Name, skill.Namespace)
-			rawDisplayLen := len(skill.Name) + len(" ("+sourceInfo+")")
-			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
-
-			if skill.Overshadowed {
-				displayName := skill.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
-				name := overshadowedNameStyle.Render(displayName)
-				path := overshadowedPathStyle.Render(relPath)
-				label := overshadowedLabelStyle.Render(" (overshadowed)")
-				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
-			} else {
-				name := nameStyle.Render(skill.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
-				path := pathStyle.Render(relPath)
-				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
-			}
-		}
+		lines = append(lines, formatResourceList(skillItems, styles)...)
 	}
 
 	lines = append(lines, "")
@@ -553,39 +546,78 @@ func listAvailable(w io.Writer, colorMode string) error {
 			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
 		}
 	} else {
-		// Find the longest command display name for alignment
-		maxNameLen := 0
-		for _, cmd := range commands {
-			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
-			displayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
-			if displayLen > maxNameLen {
-				maxNameLen = displayLen
+		cmdItems := make([]listableItem, len(commands))
+		for i, c := range commands {
+			cmdItems[i] = listableItem{
+				Name:         c.Name,
+				Namespace:    c.Namespace,
+				SourceName:   c.Source.Name,
+				Path:         command.RelativePath(c),
+				Overshadowed: c.Overshadowed,
 			}
 		}
-
-		for _, cmd := range commands {
-			relPath := command.RelativePath(cmd)
-			sourceInfo := formatSourceInfo(cmd.Source.Name, cmd.Namespace)
-			rawDisplayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
-			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
-
-			if cmd.Overshadowed {
-				displayName := cmd.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
-				name := overshadowedNameStyle.Render(displayName)
-				path := overshadowedPathStyle.Render(relPath)
-				label := overshadowedLabelStyle.Render(" (overshadowed)")
-				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
-			} else {
-				name := nameStyle.Render(cmd.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
-				path := pathStyle.Render(relPath)
-				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
-			}
-		}
+		lines = append(lines, formatResourceList(cmdItems, styles)...)
 	}
 
 	output := lipgloss.JoinVertical(lipgloss.Left, lines...)
 	_, _ = fmt.Fprintln(w, output)
 	return nil
+}
+
+// listableItem represents a resource (skill or command) that can be listed
+type listableItem struct {
+	Name         string
+	Namespace    string
+	SourceName   string
+	Path         string
+	Overshadowed bool
+}
+
+// listStyles holds the lipgloss styles for resource listing
+type listStyles struct {
+	nameStyle              lipgloss.Style
+	pathStyle              lipgloss.Style
+	overshadowedNameStyle  lipgloss.Style
+	overshadowedPathStyle  lipgloss.Style
+	overshadowedLabelStyle lipgloss.Style
+	namespaceStyle         lipgloss.Style
+}
+
+// formatResourceList formats a list of resources with consistent alignment
+func formatResourceList(items []listableItem, styles listStyles) []string {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Find the longest display name for alignment
+	maxNameLen := 0
+	for _, item := range items {
+		sourceInfo := formatSourceInfo(item.SourceName, item.Namespace)
+		displayLen := len(item.Name) + len(" ("+sourceInfo+")")
+		if displayLen > maxNameLen {
+			maxNameLen = displayLen
+		}
+	}
+
+	var lines []string
+	for _, item := range items {
+		sourceInfo := formatSourceInfo(item.SourceName, item.Namespace)
+		rawDisplayLen := len(item.Name) + len(" ("+sourceInfo+")")
+		padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
+
+		if item.Overshadowed {
+			displayName := item.Name + " " + styles.namespaceStyle.Render("("+sourceInfo+")")
+			name := styles.overshadowedNameStyle.Render(displayName)
+			path := styles.overshadowedPathStyle.Render(item.Path)
+			label := styles.overshadowedLabelStyle.Render(" (overshadowed)")
+			lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
+		} else {
+			name := styles.nameStyle.Render(item.Name) + " " + styles.namespaceStyle.Render("("+sourceInfo+")")
+			path := styles.pathStyle.Render(item.Path)
+			lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
+		}
+	}
+	return lines
 }
 
 // Helper functions for resource value extraction
