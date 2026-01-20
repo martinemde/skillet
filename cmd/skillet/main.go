@@ -510,25 +510,38 @@ func listAvailable(w io.Writer, colorMode string) error {
 			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
 		}
 	} else {
-		// Find the longest skill name for alignment
+		// Find the longest skill display name for alignment
 		maxNameLen := 0
 		for _, skill := range skills {
-			if len(skill.Name) > maxNameLen {
-				maxNameLen = len(skill.Name)
+			// Display format: "name (source)" or "name (source:namespace)"
+			sourceInfo := skill.Source.Name
+			if skill.Namespace != "" {
+				sourceInfo = skill.Source.Name + ":" + skill.Namespace
+			}
+			displayLen := len(skill.Name) + len(" ("+sourceInfo+")")
+			if displayLen > maxNameLen {
+				maxNameLen = displayLen
 			}
 		}
 
 		for _, skill := range skills {
 			relPath := discovery.RelativePath(skill)
-			padding := strings.Repeat(" ", maxNameLen-len(skill.Name))
+			// Display format: "name (source)" or "name (source:namespace)"
+			sourceInfo := skill.Source.Name
+			if skill.Namespace != "" {
+				sourceInfo = skill.Source.Name + ":" + skill.Namespace
+			}
+			rawDisplayLen := len(skill.Name) + len(" ("+sourceInfo+")")
+			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
 
 			if skill.Overshadowed {
-				name := overshadowedNameStyle.Render(skill.Name)
+				displayName := skill.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
+				name := overshadowedNameStyle.Render(displayName)
 				path := overshadowedPathStyle.Render(relPath)
 				label := overshadowedLabelStyle.Render(" (overshadowed)")
 				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
 			} else {
-				name := nameStyle.Render(skill.Name)
+				name := nameStyle.Render(skill.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
 				path := pathStyle.Render(relPath)
 				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
 			}
@@ -547,41 +560,38 @@ func listAvailable(w io.Writer, colorMode string) error {
 			lines = append(lines, fmt.Sprintf("    • %s (%s)", source.Path, source.Name))
 		}
 	} else {
-		// Find the longest command name for alignment
+		// Find the longest command display name for alignment
 		maxNameLen := 0
 		for _, cmd := range commands {
-			displayName := cmd.Name
+			// Display format: "name (source)" or "name (source:namespace)"
+			sourceInfo := cmd.Source.Name
 			if cmd.Namespace != "" {
-				displayName = cmd.Name + " (" + cmd.Namespace + ")"
+				sourceInfo = cmd.Source.Name + ":" + cmd.Namespace
 			}
-			if len(displayName) > maxNameLen {
-				maxNameLen = len(displayName)
+			displayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
+			if displayLen > maxNameLen {
+				maxNameLen = displayLen
 			}
 		}
 
 		for _, cmd := range commands {
 			relPath := command.RelativePath(cmd)
-			displayName := cmd.Name
+			// Display format: "name (source)" or "name (source:namespace)"
+			sourceInfo := cmd.Source.Name
 			if cmd.Namespace != "" {
-				displayName = cmd.Name + " " + namespaceStyle.Render("("+cmd.Namespace+")")
+				sourceInfo = cmd.Source.Name + ":" + cmd.Namespace
 			}
-			// Calculate padding based on raw name length
-			rawDisplayLen := len(cmd.Name)
-			if cmd.Namespace != "" {
-				rawDisplayLen = len(cmd.Name) + len(" ("+cmd.Namespace+")")
-			}
+			rawDisplayLen := len(cmd.Name) + len(" ("+sourceInfo+")")
 			padding := strings.Repeat(" ", maxNameLen-rawDisplayLen)
 
 			if cmd.Overshadowed {
+				displayName := cmd.Name + " " + namespaceStyle.Render("("+sourceInfo+")")
 				name := overshadowedNameStyle.Render(displayName)
 				path := overshadowedPathStyle.Render(relPath)
 				label := overshadowedLabelStyle.Render(" (overshadowed)")
 				lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
 			} else {
-				name := nameStyle.Render(cmd.Name)
-				if cmd.Namespace != "" {
-					name = nameStyle.Render(cmd.Name) + " " + namespaceStyle.Render("("+cmd.Namespace+")")
-				}
+				name := nameStyle.Render(cmd.Name) + " " + namespaceStyle.Render("("+sourceInfo+")")
 				path := pathStyle.Render(relPath)
 				lines = append(lines, fmt.Sprintf("  %s%s  %s", name, padding, path))
 			}

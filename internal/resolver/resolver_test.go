@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/martinemde/skillet/internal/commandpath"
+	"github.com/martinemde/skillet/internal/skillpath"
 )
 
 func TestResolve_ExactFilePath(t *testing.T) {
@@ -503,5 +506,290 @@ func TestIsTextContent(t *testing.T) {
 				t.Errorf("isTextContent() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseNamespaceQuery(t *testing.T) {
+	tests := []struct {
+		query         string
+		wantNamespace string
+		wantName      string
+	}{
+		{"test", "", "test"},
+		{"frontend:test", "frontend", "test"},
+		{"backend:my-skill", "backend", "my-skill"},
+		{":test", "", "test"}, // Edge case: leading colon
+		{"a:b:c", "a", "b:c"}, // Only first colon matters
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			ns, name := parseNamespaceQuery(tt.query)
+			if ns != tt.wantNamespace || name != tt.wantName {
+				t.Errorf("parseNamespaceQuery(%q) = (%q, %q), want (%q, %q)",
+					tt.query, ns, name, tt.wantNamespace, tt.wantName)
+			}
+		})
+	}
+}
+
+// Helper to create skill directory structure
+func createTestSkill(t *testing.T, baseDir, namespace, name string) string {
+	t.Helper()
+	var skillDir string
+	if namespace != "" {
+		skillDir = filepath.Join(baseDir, namespace, name)
+	} else {
+		skillDir = filepath.Join(baseDir, name)
+	}
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("failed to create skill directory: %v", err)
+	}
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create skill file: %v", err)
+	}
+	return skillDir
+}
+
+// Helper to create command file
+func createTestCommand(t *testing.T, baseDir, namespace, name string) string {
+	t.Helper()
+	var cmdDir string
+	if namespace != "" {
+		cmdDir = filepath.Join(baseDir, namespace)
+	} else {
+		cmdDir = baseDir
+	}
+	if err := os.MkdirAll(cmdDir, 0755); err != nil {
+		t.Fatalf("failed to create command directory: %v", err)
+	}
+	cmdFile := filepath.Join(cmdDir, name+".md")
+	if err := os.WriteFile(cmdFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create command file: %v", err)
+	}
+	return cmdFile
+}
+
+func TestResolver_ExplicitNamespaceWins(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up project skills (priority 0)
+	projectSkillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, projectSkillsDir, "frontend", "test")
+
+	// Set up user skills (priority 1) - unnamespaced version
+	userSkillsDir := filepath.Join(tmpDir, "user", ".claude", "skills")
+	createTestSkill(t, userSkillsDir, "", "test")
+
+	// Create resolver with custom paths
+	skillSources := []skillpath.Source{
+		{Path: projectSkillsDir, Name: "project", Priority: 0},
+		{Path: userSkillsDir, Name: "user", Priority: 1},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query "frontend:test" should find project:frontend:test, not user:test
+	result, err := r.Resolve("frontend:test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result.Path, "frontend") {
+		t.Errorf("expected frontend:test to resolve to namespaced skill, got %s", result.Path)
+	}
+	if result.Type != ResourceTypeSkill {
+		t.Errorf("expected ResourceTypeSkill, got %d", result.Type)
+	}
+}
+
+func TestResolver_UnnamespacedPrefersUnnamespaced(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up project skills (priority 0) - namespaced version
+	projectSkillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, projectSkillsDir, "frontend", "test")
+
+	// Set up user skills (priority 1) - unnamespaced version
+	userSkillsDir := filepath.Join(tmpDir, "user", ".claude", "skills")
+	createTestSkill(t, userSkillsDir, "", "test")
+
+	skillSources := []skillpath.Source{
+		{Path: projectSkillsDir, Name: "project", Priority: 0},
+		{Path: userSkillsDir, Name: "user", Priority: 1},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query "test" should find user:test (unnamespaced) over project:frontend:test
+	result, err := r.Resolve("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should resolve to unnamespaced (user) skill
+	if strings.Contains(result.Path, "frontend") {
+		t.Errorf("expected unnamespaced query to prefer unnamespaced skill, got %s", result.Path)
+	}
+	if !strings.Contains(result.Path, "user") {
+		t.Errorf("expected to resolve to user skill, got %s", result.Path)
+	}
+}
+
+func TestResolver_FallbackToNamespaced(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up only namespaced skill (no unnamespaced version)
+	skillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, skillsDir, "frontend", "test")
+
+	skillSources := []skillpath.Source{
+		{Path: skillsDir, Name: "project", Priority: 0},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query "test" should fall back to frontend:test since no unnamespaced exists
+	result, err := r.Resolve("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result.Path, "frontend") {
+		t.Errorf("expected fallback to namespaced skill, got %s", result.Path)
+	}
+}
+
+func TestResolver_CollisionError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up multiple namespaced skills at same priority
+	skillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, skillsDir, "frontend", "test")
+	createTestSkill(t, skillsDir, "backend", "test")
+
+	skillSources := []skillpath.Source{
+		{Path: skillsDir, Name: "project", Priority: 0},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query "test" should error due to ambiguous match
+	_, err := r.Resolve("test")
+	if err == nil {
+		t.Fatal("expected collision error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("expected ambiguous match error, got: %v", err)
+	}
+}
+
+func TestResolver_SkillsBeforeCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up both skill and command with same name at same priority
+	skillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, skillsDir, "", "test")
+
+	cmdDir := filepath.Join(tmpDir, "project", ".claude", "commands")
+	createTestCommand(t, cmdDir, "", "test")
+
+	skillSources := []skillpath.Source{
+		{Path: skillsDir, Name: "project", Priority: 0},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: cmdDir, Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query "test" should resolve to skill (skills have priority over commands)
+	result, err := r.Resolve("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Type != ResourceTypeSkill {
+		t.Errorf("expected skill to be preferred over command, got %d", result.Type)
+	}
+}
+
+func TestResolver_CaseInsensitive(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	skillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, skillsDir, "Frontend", "Test-Skill")
+
+	skillSources := []skillpath.Source{
+		{Path: skillsDir, Name: "project", Priority: 0},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query with different case should still find the skill
+	result, err := r.Resolve("frontend:test-skill")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Type != ResourceTypeSkill {
+		t.Errorf("expected ResourceTypeSkill, got %d", result.Type)
+	}
+}
+
+func TestResolver_NamespacedNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	skillsDir := filepath.Join(tmpDir, "project", ".claude", "skills")
+	createTestSkill(t, skillsDir, "frontend", "test")
+
+	skillSources := []skillpath.Source{
+		{Path: skillsDir, Name: "project", Priority: 0},
+	}
+	cmdSources := []commandpath.Source{
+		{Path: filepath.Join(tmpDir, "project", ".claude", "commands"), Name: "project", Priority: 0},
+	}
+
+	sp := skillpath.NewWithSources(skillSources)
+	cp := commandpath.NewWithSources(cmdSources)
+	r := NewWithPaths(sp, cp)
+
+	// Query with wrong namespace should not find anything
+	_, err := r.Resolve("backend:test")
+	if err == nil {
+		t.Fatal("expected error for nonexistent namespace, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error, got: %v", err)
 	}
 }

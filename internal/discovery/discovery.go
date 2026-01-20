@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/martinemde/skillet/internal/skillpath"
 )
@@ -19,10 +20,25 @@ type Skill struct {
 	Path string
 	// Source is information about where this skill was found
 	Source skillpath.Source
+	// Namespace is the subdirectory within skills (e.g., "frontend" for skills/frontend/test/SKILL.md)
+	Namespace string
 	// Overshadowed indicates this skill is hidden by a higher-priority skill
 	Overshadowed bool
 	// OvershadowedBy is the path of the skill that shadows this one
 	OvershadowedBy string
+}
+
+// FullName returns the display name in "namespace:name" format, or just "name" if no namespace
+func (s Skill) FullName() string {
+	if s.Namespace != "" {
+		return s.Namespace + ":" + s.Name
+	}
+	return s.Name
+}
+
+// Key returns the unique identifier used for overshadowing: "namespace:name"
+func (s Skill) Key() string {
+	return s.Namespace + ":" + s.Name
 }
 
 // Finder is an interface for finding skills in a source directory.
@@ -38,7 +54,9 @@ type Finder interface {
 // {source}/skills/{name}/SKILL.md
 type DirectoryFinder struct{}
 
-// Find discovers skills in the given source using the directory pattern
+// Find discovers skills in the given source using the directory pattern.
+// Supports both unnamespaced skills (skills/name/SKILL.md) and namespaced skills
+// (skills/namespace/name/SKILL.md).
 func (f *DirectoryFinder) Find(source skillpath.Source) ([]Skill, error) {
 	var skills []Skill
 
@@ -47,29 +65,62 @@ func (f *DirectoryFinder) Find(source skillpath.Source) ([]Skill, error) {
 		return skills, nil
 	}
 
-	// Read the source directory
-	entries, err := os.ReadDir(source.Path)
+	// Walk the directory to find SKILL.md files (supports namespacing via subdirectories)
+	err := filepath.WalkDir(source.Path, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip directories we can't read
+		}
+
+		// Only process SKILL.md files
+		if d.IsDir() || !strings.EqualFold(d.Name(), skillpath.SkillFile) {
+			return nil
+		}
+
+		// Get the relative path from source to the SKILL.md file's directory
+		skillDir := filepath.Dir(path)
+		relPath, err := filepath.Rel(source.Path, skillDir)
+		if err != nil {
+			return nil
+		}
+
+		// Determine name and namespace from the relative path
+		// depth 1: skills/name/SKILL.md -> namespace="", name="name"
+		// depth 2: skills/namespace/name/SKILL.md -> namespace="namespace", name="name"
+		parts := strings.Split(relPath, string(filepath.Separator))
+		var namespace, name string
+
+		switch len(parts) {
+		case 1:
+			// Unnamespaced: skills/name/SKILL.md
+			name = parts[0]
+			namespace = ""
+		case 2:
+			// Namespaced: skills/namespace/name/SKILL.md
+			namespace = parts[0]
+			name = parts[1]
+		default:
+			// Deeper nesting not supported, skip
+			return nil
+		}
+
+		// Skip empty or invalid names
+		if name == "" || name == "." {
+			return nil
+		}
+
+		skills = append(skills, Skill{
+			Name:      name,
+			Path:      path,
+			Source:    source,
+			Namespace: namespace,
+		})
+
+		return nil
+	})
+
 	if err != nil {
-		// If we can't read the directory, just return empty
+		// If we can't walk the directory, just return empty
 		return skills, nil
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		skillName := entry.Name()
-		skillPath := skillpath.SkillPath(source.Path, skillName)
-
-		// Check if SKILL.md exists
-		if _, err := os.Stat(skillPath); err == nil {
-			skills = append(skills, Skill{
-				Name:   skillName,
-				Path:   skillPath,
-				Source: source,
-			})
-		}
 	}
 
 	return skills, nil
@@ -98,11 +149,11 @@ func NewWithFinder(path *skillpath.Path, finder Finder) *Discoverer {
 }
 
 // Discover finds all skills across all sources in the path.
-// Skills are returned sorted by precedence (source priority), then alphabetically.
+// Skills are returned sorted by precedence (source priority), then by namespace, then alphabetically.
 // Skills that are overshadowed by higher-priority sources are marked as such.
 func (d *Discoverer) Discover() ([]Skill, error) {
-	// Track skills we've seen (by name) and their paths
-	seen := make(map[string]string) // name -> path of highest-priority version
+	// Track skills we've seen (by namespace:name) and their paths
+	seen := make(map[string]string) // key -> path of highest-priority version
 	var allSkills []Skill
 
 	// Iterate through sources in priority order
@@ -114,22 +165,26 @@ func (d *Discoverer) Discover() ([]Skill, error) {
 		}
 
 		for _, skill := range skills {
-			if existingPath, exists := seen[skill.Name]; exists {
+			key := skill.Key()
+			if existingPath, exists := seen[key]; exists {
 				// This skill is overshadowed
 				skill.Overshadowed = true
 				skill.OvershadowedBy = existingPath
 			} else {
 				// First time seeing this skill
-				seen[skill.Name] = skill.Path
+				seen[key] = skill.Path
 			}
 			allSkills = append(allSkills, skill)
 		}
 	}
 
-	// Sort: by source priority, then alphabetically by name
+	// Sort: by source priority, then by namespace, then alphabetically by name
 	sort.Slice(allSkills, func(i, j int) bool {
 		if allSkills[i].Source.Priority != allSkills[j].Source.Priority {
 			return allSkills[i].Source.Priority < allSkills[j].Source.Priority
+		}
+		if allSkills[i].Namespace != allSkills[j].Namespace {
+			return allSkills[i].Namespace < allSkills[j].Namespace
 		}
 		return allSkills[i].Name < allSkills[j].Name
 	})

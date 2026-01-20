@@ -7,7 +7,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+
+	"github.com/martinemde/skillet/internal/command"
+	"github.com/martinemde/skillet/internal/commandpath"
+	"github.com/martinemde/skillet/internal/discovery"
+	"github.com/martinemde/skillet/internal/skillpath"
 )
 
 const (
@@ -33,25 +39,91 @@ type ResolveResult struct {
 	Type    ResourceType // Type of resource (skill or command)
 }
 
-// Resolve takes a path argument and resolves it to a SKILL.md or command file
+// matchSpecificity indicates how well a query matched a resource
+type matchSpecificity int
+
+const (
+	// exactNamespaceMatch: Query "frontend:test" matches skill/command "frontend:test"
+	exactNamespaceMatch matchSpecificity = iota
+	// unnamespacedExact: Query "test" matches unnamespaced "test"
+	unnamespacedExact
+	// namespacedFallback: Query "test" matches namespaced "frontend:test"
+	namespacedFallback
+)
+
+// match represents a candidate match during resolution
+type match struct {
+	path         string
+	resourceType ResourceType
+	priority     int              // source priority (lower = higher priority)
+	specificity  matchSpecificity // how well the query matched
+	namespace    string           // for error messages
+	name         string           // for error messages
+}
+
+// Resolver handles namespace-aware resolution of skills and commands
+type Resolver struct {
+	skillPath *skillpath.Path
+	cmdPath   *commandpath.Path
+}
+
+// New creates a new Resolver with default skill and command paths
+func New() (*Resolver, error) {
+	sp, err := skillpath.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize skill path: %w", err)
+	}
+
+	cp, err := commandpath.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize command path: %w", err)
+	}
+
+	return &Resolver{
+		skillPath: sp,
+		cmdPath:   cp,
+	}, nil
+}
+
+// NewWithPaths creates a Resolver with custom paths (useful for testing)
+func NewWithPaths(sp *skillpath.Path, cp *commandpath.Path) *Resolver {
+	return &Resolver{
+		skillPath: sp,
+		cmdPath:   cp,
+	}
+}
+
+// parseNamespaceQuery splits a query into namespace and name components
+// "frontend:test" -> ("frontend", "test")
+// "test" -> ("", "test")
+func parseNamespaceQuery(query string) (namespace, name string) {
+	if idx := strings.Index(query, ":"); idx != -1 {
+		return query[:idx], query[idx+1:]
+	}
+	return "", query
+}
+
+// Resolve takes a path argument and resolves it to a SKILL.md or command file.
 // Resolution order:
 // 1. If URL: download and validate
 // 2. If exact file path exists: use it
 // 3. If directory with SKILL.md exists: use it
-// 4. If bare word: look for skills first, then commands:
-//   - .claude/skills/<name>/SKILL.md, $HOME/.claude/skills/<name>/SKILL.md
-//   - .claude/commands/<name>.md, $HOME/.claude/commands/<name>.md
-func Resolve(path string) (*ResolveResult, error) {
+// 4. Namespace-aware discovery:
+//   - Parse query for namespace (e.g., "frontend:test")
+//   - Collect matching skills and commands
+//   - Score by specificity, priority, and resource type
+//   - Return best match or collision error
+func (r *Resolver) Resolve(input string) (*ResolveResult, error) {
 	// Check if it's a URL
-	if isURL(path) {
-		return resolveURL(path)
+	if isURL(input) {
+		return resolveURL(input)
 	}
 
 	// Try exact path
-	if info, err := os.Stat(path); err == nil {
+	if info, err := os.Stat(input); err == nil {
 		if !info.IsDir() {
 			// It's a file, use it directly
-			absPath, err := filepath.Abs(path)
+			absPath, err := filepath.Abs(input)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get absolute path: %w", err)
 			}
@@ -63,7 +135,7 @@ func Resolve(path string) (*ResolveResult, error) {
 			return &ResolveResult{Path: absPath, Type: resourceType}, nil
 		}
 		// It's a directory, try appending SKILL.md
-		skillPath := filepath.Join(path, skillFileName)
+		skillPath := filepath.Join(input, skillFileName)
 		if _, err := os.Stat(skillPath); err == nil {
 			absPath, err := filepath.Abs(skillPath)
 			if err != nil {
@@ -74,57 +146,158 @@ func Resolve(path string) (*ResolveResult, error) {
 	}
 
 	// Check if it's a bare word (no path separators)
-	if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
-		homeDir, _ := os.UserHomeDir()
+	if !strings.Contains(input, "/") && !strings.Contains(input, "\\") {
+		return r.resolveByName(input)
+	}
 
-		// Try skills first
-		// Try .claude/skills/<name>/SKILL.md in working directory
-		claudeSkillPath := filepath.Join(".claude", "skills", path, skillFileName)
-		if _, err := os.Stat(claudeSkillPath); err == nil {
-			absPath, err := filepath.Abs(claudeSkillPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get absolute path: %w", err)
-			}
-			return &ResolveResult{Path: absPath, Type: ResourceTypeSkill}, nil
+	return nil, fmt.Errorf("skill or command not found: %s", input)
+}
+
+// resolveByName resolves a bare word query using namespace-aware matching
+func (r *Resolver) resolveByName(query string) (*ResolveResult, error) {
+	queryNS, queryName := parseNamespaceQuery(query)
+
+	var matches []match
+
+	// Discover all skills
+	skillDisc := discovery.New(r.skillPath)
+	skills, err := skillDisc.Discover()
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover skills: %w", err)
+	}
+
+	// Collect skill matches
+	for _, skill := range skills {
+		if skill.Overshadowed {
+			continue // Skip overshadowed skills
 		}
 
-		// Try $HOME/.claude/skills/<name>/SKILL.md
-		if homeDir != "" {
-			homeSkillPath := filepath.Join(homeDir, ".claude", "skills", path, skillFileName)
-			if _, err := os.Stat(homeSkillPath); err == nil {
-				absPath, err := filepath.Abs(homeSkillPath)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get absolute path: %w", err)
+		// Case-insensitive name matching
+		if !strings.EqualFold(skill.Name, queryName) {
+			continue
+		}
+
+		var specificity matchSpecificity
+		if queryNS != "" {
+			// Query has explicit namespace
+			if strings.EqualFold(skill.Namespace, queryNS) {
+				specificity = exactNamespaceMatch
+			} else {
+				continue // Namespace doesn't match, skip
+			}
+		} else {
+			// Query has no namespace
+			if skill.Namespace == "" {
+				specificity = unnamespacedExact
+			} else {
+				specificity = namespacedFallback
+			}
+		}
+
+		matches = append(matches, match{
+			path:         skill.Path,
+			resourceType: ResourceTypeSkill,
+			priority:     skill.Source.Priority,
+			specificity:  specificity,
+			namespace:    skill.Namespace,
+			name:         skill.Name,
+		})
+	}
+
+	// Discover all commands
+	cmdDisc := command.NewDiscoverer(r.cmdPath)
+	commands, err := cmdDisc.Discover()
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover commands: %w", err)
+	}
+
+	// Collect command matches
+	for _, cmd := range commands {
+		if cmd.Overshadowed {
+			continue // Skip overshadowed commands
+		}
+
+		// Case-insensitive name matching
+		if !strings.EqualFold(cmd.Name, queryName) {
+			continue
+		}
+
+		var specificity matchSpecificity
+		if queryNS != "" {
+			// Query has explicit namespace
+			if strings.EqualFold(cmd.Namespace, queryNS) {
+				specificity = exactNamespaceMatch
+			} else {
+				continue // Namespace doesn't match, skip
+			}
+		} else {
+			// Query has no namespace
+			if cmd.Namespace == "" {
+				specificity = unnamespacedExact
+			} else {
+				specificity = namespacedFallback
+			}
+		}
+
+		matches = append(matches, match{
+			path:         cmd.Path,
+			resourceType: ResourceTypeCommand,
+			priority:     cmd.Source.Priority,
+			specificity:  specificity,
+			namespace:    cmd.Namespace,
+			name:         cmd.Name,
+		})
+	}
+
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("skill or command not found: %s (tried exact path, directory with SKILL.md, .claude/skills/<name>/SKILL.md, $HOME/.claude/skills/<name>/SKILL.md, .claude/commands/<name>.md, and $HOME/.claude/commands/<name>.md)", query)
+	}
+
+	// Sort matches by: specificity → priority → resource type (skills before commands)
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].specificity != matches[j].specificity {
+			return matches[i].specificity < matches[j].specificity
+		}
+		if matches[i].priority != matches[j].priority {
+			return matches[i].priority < matches[j].priority
+		}
+		// Skills before commands
+		return matches[i].resourceType < matches[j].resourceType
+	})
+
+	// Check for ambiguous matches (collision)
+	// Two matches are ambiguous if they have the same specificity and priority
+	if len(matches) > 1 {
+		best := matches[0]
+		// Check if there's another match with same specificity and priority but different namespace
+		for _, m := range matches[1:] {
+			if m.specificity == best.specificity && m.priority == best.priority {
+				// Only collision if both are namespacedFallback (ambiguous fallback)
+				if best.specificity == namespacedFallback && m.specificity == namespacedFallback {
+					return nil, fmt.Errorf("ambiguous match for %q: found both %s:%s and %s:%s at same priority. Use explicit namespace (e.g., %s:%s or %s:%s)",
+						query, best.namespace, best.name, m.namespace, m.name, best.namespace, queryName, m.namespace, queryName)
 				}
-				return &ResolveResult{Path: absPath, Type: ResourceTypeSkill}, nil
-			}
-		}
-
-		// Try commands
-		// Try .claude/commands/<name>.md in working directory
-		claudeCommandPath := filepath.Join(".claude", "commands", path+".md")
-		if _, err := os.Stat(claudeCommandPath); err == nil {
-			absPath, err := filepath.Abs(claudeCommandPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get absolute path: %w", err)
-			}
-			return &ResolveResult{Path: absPath, Type: ResourceTypeCommand}, nil
-		}
-
-		// Try $HOME/.claude/commands/<name>.md
-		if homeDir != "" {
-			homeCommandPath := filepath.Join(homeDir, ".claude", "commands", path+".md")
-			if _, err := os.Stat(homeCommandPath); err == nil {
-				absPath, err := filepath.Abs(homeCommandPath)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get absolute path: %w", err)
-				}
-				return &ResolveResult{Path: absPath, Type: ResourceTypeCommand}, nil
+			} else {
+				break // Rest of matches have lower priority
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("skill or command not found: %s (tried exact path, directory with SKILL.md, .claude/skills/<name>/SKILL.md, $HOME/.claude/skills/<name>/SKILL.md, .claude/commands/<name>.md, and $HOME/.claude/commands/<name>.md)", path)
+	// Return the best match
+	return &ResolveResult{
+		Path: matches[0].path,
+		Type: matches[0].resourceType,
+	}, nil
+}
+
+// Resolve is a convenience function that creates a default Resolver and resolves the path.
+// For multiple resolutions or testing, use New() and call Resolve() on the returned Resolver.
+func Resolve(path string) (*ResolveResult, error) {
+	r, err := New()
+	if err != nil {
+		return nil, err
+	}
+	return r.Resolve(path)
 }
 
 // isURL checks if a string is a valid HTTP(S) URL
