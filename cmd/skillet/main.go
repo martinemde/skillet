@@ -104,8 +104,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		showVersion    = flags.Bool("version", false, "Show version information")
 		showHelp       = flags.Bool("help", false, "Show help information")
 		listSkills     = flags.Bool("list", false, "List all available skills and commands")
-		verbose        = flags.Bool("verbose", false, "Show verbose output including raw JSON")
-		debug          = flags.Bool("debug", false, "Show raw stream JSON as it's received")
+		verbose        = flags.Bool("verbose", false, "Show detailed output including thinking and tool details")
+		debug          = flags.Bool("debug", false, "Print raw JSON stream to stderr")
 		showUsage      = flags.Bool("usage", false, "Show token usage statistics")
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
 		quiet          = flags.Bool("q", false, "Quiet mode - suppress all output except errors")
@@ -355,18 +355,18 @@ func printHelp(w io.Writer, colorMode string) {
 		sectionStyle.Render("Options:"),
 		fmt.Sprintf("  %s              Show this help message", optionStyle.Render("--help")),
 		fmt.Sprintf("  %s           Show version information", optionStyle.Render("--version")),
-		fmt.Sprintf("  %s              List all available skills and commands", optionStyle.Render("--list")),
-		fmt.Sprintf("  %s           Show verbose output including raw JSON stream", optionStyle.Render("--verbose")),
-		fmt.Sprintf("  %s             Show raw stream JSON as it's received", optionStyle.Render("--debug")),
+		fmt.Sprintf("  %s              List available skills and commands", optionStyle.Render("--list")),
+		fmt.Sprintf("  %s           Show detailed output with thinking and tool details", optionStyle.Render("--verbose")),
+		fmt.Sprintf("  %s             Print raw JSON stream to stderr (for debugging)", optionStyle.Render("--debug")),
 		fmt.Sprintf("  %s             Show token usage statistics after execution", optionStyle.Render("--usage")),
-		fmt.Sprintf("  %s           Show the command that would be executed without running it", optionStyle.Render("--dry-run")),
-		fmt.Sprintf("  %s, %s         Quiet mode - suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
-		fmt.Sprintf("  %s            Prompt to pass to Claude (required if no skill provided)", optionStyle.Render("--prompt")),
-		fmt.Sprintf("  %s             Override model to use (overrides SKILL.md setting)", optionStyle.Render("--model")),
-		fmt.Sprintf("  %s     Override allowed tools (overrides SKILL.md setting)", optionStyle.Render("--allowed-tools")),
-		fmt.Sprintf("  %s   Override permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
-		fmt.Sprintf("  %s     Override output format (default: stream-json)", optionStyle.Render("--output-format")),
-		fmt.Sprintf("  %s            Control color output (auto, always, never)", optionStyle.Render("--color")),
+		fmt.Sprintf("  %s           Show the command without running it", optionStyle.Render("--dry-run")),
+		fmt.Sprintf("  %s, %s         Suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
+		fmt.Sprintf("  %s            Prompt to pass to Claude (required without skill)", optionStyle.Render("--prompt")),
+		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
+		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),
+		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
+		fmt.Sprintf("  %s     Output format (default: stream-json)", optionStyle.Render("--output-format")),
+		fmt.Sprintf("  %s             Color output: auto, always, never", optionStyle.Render("--color")),
 	)
 
 	// Render examples with markdown
