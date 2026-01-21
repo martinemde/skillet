@@ -195,19 +195,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 		resourcePath = result.Path
 
+		// Arguments are everything after the skill/command name
+		arguments := strings.Join(posArgs[1:], " ")
+
 		switch result.Type {
 		case resolver.ResourceTypeSkill:
 			if result.BaseURL != "" {
-				parsedSkill, err = skill.ParseWithBaseDir(result.Path, result.BaseURL)
+				parsedSkill, err = skill.ParseWithBaseDir(result.Path, result.BaseURL, arguments)
 			} else {
-				parsedSkill, err = skill.Parse(result.Path)
+				parsedSkill, err = skill.Parse(result.Path, arguments)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to parse skill file: %w", err)
 			}
 			resourceName = parsedSkill.Name
 		case resolver.ResourceTypeCommand:
-			arguments := strings.Join(posArgs[1:], " ")
 			if result.BaseURL != "" {
 				cmd, err = command.ParseWithBaseDir(result.Path, result.BaseURL, arguments)
 			} else {

@@ -4,10 +4,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/martinemde/skillet/internal/frontmatter"
 	"github.com/martinemde/skillet/internal/validation"
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	// argumentsRegex matches $ARGUMENTS variable references
+	argumentsRegex = regexp.MustCompile(`\$ARGUMENTS`)
 )
 
 // Skill represents a parsed SKILL.md file
@@ -30,13 +36,14 @@ type Skill struct {
 }
 
 // Parse reads and parses a SKILL.md file
-func Parse(skillPath string) (*Skill, error) {
-	return ParseWithBaseDir(skillPath, "")
+func Parse(skillPath string, arguments string) (*Skill, error) {
+	return ParseWithBaseDir(skillPath, "", arguments)
 }
 
 // ParseWithBaseDir reads and parses a SKILL.md file with an optional custom base directory
 // If baseDir is empty, it defaults to the directory containing the skill file
-func ParseWithBaseDir(skillPath string, baseDir string) (*Skill, error) {
+// The arguments string replaces $ARGUMENTS in the skill content
+func ParseWithBaseDir(skillPath string, baseDir string, arguments string) (*Skill, error) {
 	// Resolve absolute path
 	absPath, err := filepath.Abs(skillPath)
 	if err != nil {
@@ -63,7 +70,7 @@ func ParseWithBaseDir(skillPath string, baseDir string) (*Skill, error) {
 	skill.BaseDir = baseDir
 
 	// Interpolate variables
-	skill.Content = interpolateVariables(skill.Content, baseDir)
+	skill.Content = interpolateVariables(skill.Content, baseDir, arguments)
 
 	// Validate required fields
 	if err := skill.Validate(); err != nil {
@@ -90,9 +97,21 @@ func parseFrontmatter(data string) (*Skill, error) {
 	return skill, nil
 }
 
-// interpolateVariables replaces variables like {baseDir} with actual values
-func interpolateVariables(content, baseDir string) string {
-	return validation.InterpolateBaseDir(content, baseDir)
+// interpolateVariables replaces variables like {baseDir} and $ARGUMENTS with actual values
+// If $ARGUMENTS is not present in the content and arguments are provided,
+// appends "ARGUMENTS: <value>" to the content per the agentskills.io spec.
+func interpolateVariables(content, baseDir, arguments string) string {
+	content = validation.InterpolateBaseDir(content, baseDir)
+
+	if argumentsRegex.MatchString(content) {
+		// $ARGUMENTS is present, replace it with arguments
+		content = argumentsRegex.ReplaceAllString(content, arguments)
+	} else if arguments != "" {
+		// $ARGUMENTS not present but arguments provided, append them
+		content = content + "\n\nARGUMENTS: " + arguments
+	}
+
+	return content
 }
 
 // Validate checks that required fields are present and valid

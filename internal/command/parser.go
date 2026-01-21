@@ -110,9 +110,19 @@ func parseFrontmatter(data string) (*Command, error) {
 }
 
 // interpolateVariables replaces variables like {baseDir} and $ARGUMENTS with actual values
+// If $ARGUMENTS is not present in the content and arguments are provided,
+// appends "ARGUMENTS: <value>" to the content per the agentskills.io spec.
 func interpolateVariables(content, baseDir, arguments string) string {
 	content = validation.InterpolateBaseDir(content, baseDir)
-	content = argumentsRegex.ReplaceAllString(content, arguments)
+
+	if argumentsRegex.MatchString(content) {
+		// $ARGUMENTS is present, replace it with arguments
+		content = argumentsRegex.ReplaceAllString(content, arguments)
+	} else if arguments != "" {
+		// $ARGUMENTS not present but arguments provided, append them
+		content = content + "\n\nARGUMENTS: " + arguments
+	}
+
 	return content
 }
 

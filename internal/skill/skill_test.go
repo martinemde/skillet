@@ -7,7 +7,7 @@ import (
 )
 
 func TestParse_SimpleSkill(t *testing.T) {
-	skill, err := Parse("../../testdata/simple-skill/SKILL.md")
+	skill, err := Parse("../../testdata/simple-skill/SKILL.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse simple skill: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestParse_SimpleSkill(t *testing.T) {
 }
 
 func TestParse_ComprehensiveSkill(t *testing.T) {
-	skill, err := Parse("../../testdata/comprehensive-skill/SKILL.md")
+	skill, err := Parse("../../testdata/comprehensive-skill/SKILL.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse comprehensive skill: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestParse_ComprehensiveSkill(t *testing.T) {
 }
 
 func TestParse_InterpolationSkill(t *testing.T) {
-	skill, err := Parse("../../testdata/interpolation-skill/SKILL.md")
+	skill, err := Parse("../../testdata/interpolation-skill/SKILL.md", "")
 	if err != nil {
 		t.Fatalf("Failed to parse interpolation skill: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestParse_InterpolationSkill(t *testing.T) {
 }
 
 func TestParse_InvalidName(t *testing.T) {
-	_, err := Parse("../../testdata/invalid-skill/SKILL.md")
+	_, err := Parse("../../testdata/invalid-skill/SKILL.md", "")
 	if err == nil {
 		t.Fatal("Expected error for invalid skill name, got nil")
 	}
@@ -124,7 +124,7 @@ func TestParse_InvalidName(t *testing.T) {
 }
 
 func TestParse_NoFrontmatter(t *testing.T) {
-	_, err := Parse("../../testdata/no-frontmatter/SKILL.md")
+	_, err := Parse("../../testdata/no-frontmatter/SKILL.md", "")
 	if err == nil {
 		t.Fatal("Expected error for missing frontmatter, got nil")
 	}
@@ -135,7 +135,7 @@ func TestParse_NoFrontmatter(t *testing.T) {
 }
 
 func TestParse_NonexistentFile(t *testing.T) {
-	_, err := Parse("../../testdata/nonexistent/SKILL.md")
+	_, err := Parse("../../testdata/nonexistent/SKILL.md", "")
 	if err == nil {
 		t.Fatal("Expected error for nonexistent file, got nil")
 	}
@@ -292,7 +292,7 @@ func TestInterpolateVariables(t *testing.T) {
 	baseDir := "/path/to/skill"
 	content := "Base directory is {baseDir} and config is at {baseDir}/config.json"
 
-	result := interpolateVariables(content, baseDir)
+	result := interpolateVariables(content, baseDir, "")
 
 	expected := "Base directory is /path/to/skill and config is at /path/to/skill/config.json"
 	if result != expected {
@@ -301,7 +301,7 @@ func TestInterpolateVariables(t *testing.T) {
 }
 
 func TestParse_YAMLSyntaxError(t *testing.T) {
-	_, err := Parse("../../testdata/yaml-syntax-error/SKILL.md")
+	_, err := Parse("../../testdata/yaml-syntax-error/SKILL.md", "")
 	if err == nil {
 		t.Fatal("Expected error for malformed YAML, got nil")
 	}
@@ -313,7 +313,7 @@ func TestParse_YAMLSyntaxError(t *testing.T) {
 
 func TestParseWithBaseDir_ExplicitBaseDir(t *testing.T) {
 	customBaseDir := "/custom/base/directory"
-	skill, err := ParseWithBaseDir("../../testdata/interpolation-skill/SKILL.md", customBaseDir)
+	skill, err := ParseWithBaseDir("../../testdata/interpolation-skill/SKILL.md", customBaseDir, "")
 	if err != nil {
 		t.Fatalf("Failed to parse with explicit base dir: %v", err)
 	}
@@ -330,5 +330,60 @@ func TestParseWithBaseDir_ExplicitBaseDir(t *testing.T) {
 
 	if !strings.Contains(skill.Content, customBaseDir+"/config.json") {
 		t.Errorf("Content should contain '%s/config.json'", customBaseDir)
+	}
+}
+
+func TestInterpolateVariables_Arguments(t *testing.T) {
+	content := "Process file $ARGUMENTS with options"
+	result := interpolateVariables(content, "/base", "myfile.txt --verbose")
+
+	expected := "Process file myfile.txt --verbose with options"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_MultipleArguments(t *testing.T) {
+	content := "First: $ARGUMENTS, Second: $ARGUMENTS"
+	result := interpolateVariables(content, "/base", "arg1 arg2")
+
+	expected := "First: arg1 arg2, Second: arg1 arg2"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_AppendArgumentsWhenNotPresent(t *testing.T) {
+	content := "No arguments placeholder in content"
+	result := interpolateVariables(content, "/base", "myarg --flag")
+
+	expected := "No arguments placeholder in content\n\nARGUMENTS: myarg --flag"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_NoAppendWhenArgumentsEmpty(t *testing.T) {
+	content := "No arguments placeholder in content"
+	result := interpolateVariables(content, "/base", "")
+
+	// Content should remain unchanged when arguments are empty
+	if result != content {
+		t.Errorf("Expected '%s', got '%s'", content, result)
+	}
+}
+
+func TestInterpolateVariables_NoAppendWhenPlaceholderPresent(t *testing.T) {
+	content := "Use $ARGUMENTS here"
+	result := interpolateVariables(content, "/base", "myarg")
+
+	// $ARGUMENTS should be replaced, not appended
+	expected := "Use myarg here"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+	// Should NOT contain "ARGUMENTS:" appended at end
+	if strings.Contains(result, "\n\nARGUMENTS:") {
+		t.Error("Should not append ARGUMENTS: when $ARGUMENTS placeholder exists")
 	}
 }
