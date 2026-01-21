@@ -7,6 +7,7 @@ package skillpath
 import (
 	"path/filepath"
 
+	"github.com/martinemde/skillet/internal/pluginpath"
 	"github.com/martinemde/skillet/internal/resourcepath"
 )
 
@@ -36,11 +37,20 @@ func New() (*Path, error) {
 
 // NewWithWorkDir creates a new skill path with a specific working directory.
 // If workDir is empty, the current working directory is used.
+// Plugin skill sources are automatically loaded and appended with lower priority.
 func NewWithWorkDir(workDir string) (*Path, error) {
 	p, err := resourcepath.NewWithWorkDir(SkillsDir, workDir)
 	if err != nil {
 		return nil, err
 	}
+
+	// Load plugin sources (priority 2+, after project and user)
+	plugins, err := pluginpath.Load()
+	if err == nil && len(plugins) > 0 {
+		pluginSources := pluginpath.SkillSources(plugins, 2)
+		p.AppendSources(pluginSources)
+	}
+
 	return &Path{Path: p}, nil
 }
 

@@ -22,6 +22,11 @@ type Source struct {
 	Name string
 	// Priority determines precedence (lower numbers = higher priority)
 	Priority int
+	// Namespace is an optional prefix for all resources found in this source.
+	// This is used for plugin sources where the plugin name becomes the namespace.
+	// For example, a plugin "beads" would have Namespace="beads", so a skill
+	// named "workflow" becomes "beads:workflow".
+	Namespace string
 }
 
 // Path represents a list of sources to search for resources
@@ -80,6 +85,12 @@ func NewWithSources(sources []Source) *Path {
 // Sources returns the list of sources in this path
 func (p *Path) Sources() []Source {
 	return p.sources
+}
+
+// AppendSources adds additional sources to the path.
+// This is used to add plugin sources after the default sources are created.
+func (p *Path) AppendSources(sources []Source) {
+	p.sources = append(p.sources, sources...)
 }
 
 // RelativePath returns a display-friendly relative path.

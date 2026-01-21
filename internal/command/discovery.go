@@ -90,11 +90,21 @@ func (f *DirectoryFinder) Find(source commandpath.Source) ([]DiscoveredCommand, 
 			namespace = relPath
 		}
 
+		// Prepend source namespace if present (for plugin sources)
+		fullNamespace := namespace
+		if source.Namespace != "" {
+			if namespace != "" {
+				fullNamespace = source.Namespace + ":" + namespace
+			} else {
+				fullNamespace = source.Namespace
+			}
+		}
+
 		commands = append(commands, DiscoveredCommand{
 			Name:      name,
 			Path:      path,
 			Source:    source,
-			Namespace: namespace,
+			Namespace: fullNamespace,
 		})
 
 		return nil

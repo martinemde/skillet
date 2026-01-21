@@ -602,3 +602,114 @@ func TestDiscoverer_Discover_NamespaceSorting(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectoryFinder_Find_SourceNamespace(t *testing.T) {
+	tmpDir := t.TempDir()
+	skillsDir := filepath.Join(tmpDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatalf("failed to create skills directory: %v", err)
+	}
+
+	// Create unnamespaced skill
+	createSkillDir(t, skillsDir, "workflow", "")
+
+	// Create namespaced skill
+	createSkillDir(t, skillsDir, "create", "subcmd")
+
+	finder := &DirectoryFinder{}
+
+	// Source with a namespace (simulating a plugin source)
+	source := skillpath.Source{
+		Path:      skillsDir,
+		Name:      "plugin:beads",
+		Priority:  2,
+		Namespace: "beads", // Plugin name as namespace
+	}
+
+	skills, err := finder.Find(source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(skills) != 2 {
+		t.Errorf("expected 2 skills, got %d", len(skills))
+	}
+
+	// Check that source namespace is prepended
+	foundSkills := make(map[string]Skill)
+	for _, skill := range skills {
+		foundSkills[skill.Key()] = skill
+	}
+
+	// The skill "workflow" should become "beads:workflow"
+	if skill, ok := foundSkills["beads:workflow"]; !ok {
+		t.Error("expected to find beads:workflow")
+	} else {
+		if skill.Namespace != "beads" {
+			t.Errorf("expected namespace 'beads', got %q", skill.Namespace)
+		}
+		if skill.Name != "workflow" {
+			t.Errorf("expected name 'workflow', got %q", skill.Name)
+		}
+	}
+
+	// The skill "subcmd/create" should become "beads:subcmd:create"
+	if skill, ok := foundSkills["beads:subcmd:create"]; !ok {
+		t.Error("expected to find beads:subcmd:create")
+	} else {
+		if skill.Namespace != "beads:subcmd" {
+			t.Errorf("expected namespace 'beads:subcmd', got %q", skill.Namespace)
+		}
+		if skill.Name != "create" {
+			t.Errorf("expected name 'create', got %q", skill.Name)
+		}
+	}
+}
+
+func TestDiscoverer_Discover_SourceNamespaceOvershadowing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create user-scoped skill (higher priority)
+	userSkillsDir := filepath.Join(tmpDir, "user", skillpath.ClaudeDir, skillpath.SkillsDir)
+	if err := os.MkdirAll(userSkillsDir, 0755); err != nil {
+		t.Fatalf("failed to create user skills directory: %v", err)
+	}
+	// User manually creates a beads:workflow skill (by creating beads/workflow directory)
+	createSkillDir(t, userSkillsDir, "workflow", "beads")
+
+	// Create plugin skills (lower priority, with source namespace)
+	pluginSkillsDir := filepath.Join(tmpDir, "plugin", "skills")
+	if err := os.MkdirAll(pluginSkillsDir, 0755); err != nil {
+		t.Fatalf("failed to create plugin skills directory: %v", err)
+	}
+	createSkillDir(t, pluginSkillsDir, "workflow", "") // This becomes beads:workflow via source namespace
+
+	sources := []skillpath.Source{
+		{Path: userSkillsDir, Name: "user", Priority: 1},
+		{Path: pluginSkillsDir, Name: "plugin:beads", Priority: 2, Namespace: "beads"},
+	}
+	path := skillpath.NewWithSources(sources)
+	disc := New(path)
+
+	skills, err := disc.Discover()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(skills) != 2 {
+		t.Errorf("expected 2 skills, got %d", len(skills))
+	}
+
+	// Both should be beads:workflow, but plugin version should be overshadowed
+	for _, skill := range skills {
+		if skill.Key() != "beads:workflow" {
+			t.Errorf("expected skill key 'beads:workflow', got %q", skill.Key())
+		}
+		if skill.Source.Name == "plugin:beads" && !skill.Overshadowed {
+			t.Error("expected plugin:beads skill to be overshadowed by user skill")
+		}
+		if skill.Source.Name == "user" && skill.Overshadowed {
+			t.Error("expected user skill to not be overshadowed")
+		}
+	}
+}
