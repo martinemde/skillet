@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/martinemde/skillet/internal/color"
 )
 
 // Output truncation limits for verbose mode
@@ -63,17 +62,15 @@ func (f *VerboseTerminalFormatter) Format(events <-chan StreamEvent) error {
 
 // printSystemInit prints the system initialization message with path
 func (f *VerboseTerminalFormatter) printSystemInit(data SystemInitData) {
-	icon := applyColorToIcon(successIcon, f.color)
 	if data.SkillName != "" {
 		// In verbose mode, append the path in dim style
 		if data.SkillPath != "" {
-			pathStyle := applyColorToStyle(dimStyle, f.color)
-			_, _ = fmt.Fprintf(f.output, "%s Starting %s %s\n", icon.String(), data.SkillName, pathStyle.Render(data.SkillPath))
+			_, _ = fmt.Fprintf(f.output, "%s Starting %s %s\n", successIcon.String(), data.SkillName, dimStyle.Render(data.SkillPath))
 		} else {
-			_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), data.SkillName)
+			_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), data.SkillName)
 		}
 	} else {
-		_, _ = fmt.Fprintf(f.output, "%s Starting\n", icon.String())
+		_, _ = fmt.Fprintf(f.output, "%s Starting\n", successIcon.String())
 	}
 }
 
@@ -82,8 +79,7 @@ func (f *VerboseTerminalFormatter) printThinking(data ThinkingData) {
 	if data.Text == "" {
 		return
 	}
-	style := applyColorToStyle(thinkingStyle, f.color)
-	_, _ = fmt.Fprintln(f.output, style.Render("💭 "+data.Text))
+	_, _ = fmt.Fprintln(f.output, thinkingStyle.Render("💭 "+data.Text))
 	_, _ = fmt.Fprintln(f.output)
 }
 
@@ -112,7 +108,6 @@ func (f *VerboseTerminalFormatter) printToolOperationWithDetails(tool ToolOperat
 	case "empty":
 		icon = emptyIcon
 	}
-	icon = applyColorToIcon(icon, f.color)
 
 	// Format tool line
 	line := fmt.Sprintf("%s %s", icon.String(), tool.Name)
@@ -120,8 +115,7 @@ func (f *VerboseTerminalFormatter) printToolOperationWithDetails(tool ToolOperat
 		line += " " + tool.Target
 	}
 	if tool.Status == "error" && tool.Error != "" {
-		style := applyColorToStyle(dimStyle, f.color)
-		line += style.Render(fmt.Sprintf(" (%s)", tool.Error))
+		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
 	}
 	_, _ = fmt.Fprintln(f.output, line)
 
@@ -153,18 +147,8 @@ func (f *VerboseTerminalFormatter) printToolDetails(tool ToolOperation) {
 
 	// Only print if there's content
 	if content.Len() > 0 {
-		// Apply color to box style
-		boxStyle := toolBoxStyle
-		if !color.ShouldUseColors(f.color) {
-			boxStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				Padding(0, 1).
-				MarginLeft(2).
-				MarginTop(0).
-				MarginBottom(1)
-		}
-		// Wrap in styled box
-		boxed := boxStyle.Render(strings.TrimRight(content.String(), "\n"))
+		// Wrap in styled box - colors handled by global lipgloss profile
+		boxed := toolBoxStyle.Render(strings.TrimRight(content.String(), "\n"))
 		_, _ = fmt.Fprintln(f.output, boxed)
 	}
 }
@@ -181,8 +165,7 @@ func (f *VerboseTerminalFormatter) buildTruncatedLines(w *strings.Builder, text 
 	if len(lines) > maxLines {
 		content := strings.Join(lines[:maxLines], "\n")
 		fmt.Fprintln(w, content)
-		style := applyColorToStyle(dimStyle, f.color)
-		fmt.Fprintln(w, style.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more %s)", len(lines)-maxLines, label)))
 	} else {
 		fmt.Fprintln(w, text)
 	}
@@ -201,8 +184,7 @@ func (f *VerboseTerminalFormatter) buildReadOutput(w *strings.Builder, tool Tool
 func (f *VerboseTerminalFormatter) buildWriteOutput(w *strings.Builder, tool ToolOperation) {
 	if tool.Status == "success" {
 		if filePath, ok := tool.Input["file_path"].(string); ok {
-			style := applyColorToStyle(dimStyle, f.color)
-			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ wrote to %s", filePath)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ wrote to %s", filePath)))
 		}
 	}
 }
@@ -234,8 +216,7 @@ func (f *VerboseTerminalFormatter) buildBashOutput(w *strings.Builder, tool Tool
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", content)
 		rendered := renderMarkdown(f.mdRenderer, resultBlock)
 		fmt.Fprint(w, rendered)
-		style := applyColorToStyle(dimStyle, f.color)
-		fmt.Fprintln(w, style.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
+		fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("... (%d more lines)", len(lines)-maxBashOutputLines)))
 	} else {
 		resultBlock := fmt.Sprintf("```sh\n%s\n```", resultStr)
 		rendered := renderMarkdown(f.mdRenderer, resultBlock)
@@ -254,8 +235,6 @@ func (f *VerboseTerminalFormatter) buildSearchOutput(w *strings.Builder, tool To
 
 // buildGenericToolOutput writes basic input/output for other tools
 func (f *VerboseTerminalFormatter) buildGenericToolOutput(w *strings.Builder, tool ToolOperation) {
-	style := applyColorToStyle(dimStyle, f.color)
-
 	// Show key input parameters
 	if len(tool.Input) > 0 {
 		for k, v := range tool.Input {
@@ -263,7 +242,7 @@ func (f *VerboseTerminalFormatter) buildGenericToolOutput(w *strings.Builder, to
 			if len(vStr) > maxErrorDisplayLength {
 				vStr = vStr[:maxErrorDisplayLength-3] + "..."
 			}
-			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s: %s", k, vStr)))
 		}
 	}
 
@@ -271,7 +250,7 @@ func (f *VerboseTerminalFormatter) buildGenericToolOutput(w *strings.Builder, to
 	if tool.Result != nil && tool.Status != "error" {
 		resultStr := extractResultText(tool.Result)
 		if resultStr != "" && len(resultStr) < maxGenericOutputLength {
-			fmt.Fprintln(w, style.Render(fmt.Sprintf("→ %s", resultStr)))
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("→ %s", resultStr)))
 		}
 	}
 }
@@ -292,8 +271,7 @@ func (f *VerboseTerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 
 		// Show the most recently completed task first (dimmed with ☒)
 		if lastCompleted != "" {
-			style := applyColorToStyle(dimStyle, f.color)
-			_, _ = fmt.Fprintf(f.output, "%s\n", style.Render("☒ "+lastCompleted))
+			_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☒ "+lastCompleted))
 		}
 
 		// Show remaining tasks
@@ -310,8 +288,7 @@ func (f *VerboseTerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 					_, _ = fmt.Fprintf(f.output, "☐ %s\n", content)
 				} else {
 					// Pending: dimmed with empty checkbox
-					style := applyColorToStyle(dimStyle, f.color)
-					_, _ = fmt.Fprintf(f.output, "%s\n", style.Render("☐ "+content))
+					_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☐ "+content))
 				}
 			}
 		}
@@ -324,11 +301,9 @@ func (f *VerboseTerminalFormatter) printCompletion(data FinalResultData) {
 	// Just print completion status
 	_, _ = fmt.Fprintln(f.output)
 	if data.IsError {
-		icon := applyColorToIcon(errorIcon, f.color)
-		_, _ = fmt.Fprintln(f.output, icon.String()+" Failed")
+		_, _ = fmt.Fprintln(f.output, errorIcon.String()+" Failed")
 	} else {
-		icon := applyColorToIcon(successIcon, f.color)
-		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", icon.String(), data.Elapsed.Seconds())
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), data.Elapsed.Seconds())
 	}
 }
 
@@ -364,19 +339,14 @@ func (f *VerboseTerminalFormatter) printUsage(usage *Usage) {
 		}
 	}
 
-	// Create styled table with color support
-	borderStyle := lipgloss.NewStyle()
-	if color.ShouldUseColors(f.color) {
-		borderStyle = borderStyle.Foreground(lipgloss.Color("8"))
-	}
-
+	// Create styled table - colors handled by global lipgloss profile
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(borderStyle).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if col == 0 {
 				// Metric name column - dim style
-				return applyColorToStyle(dimStyle, f.color)
+				return dimStyle
 			}
 			// Value column - normal style
 			return lipgloss.NewStyle()

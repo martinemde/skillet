@@ -143,6 +143,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	// Configure global color profile early, before any rendering
+	color.ConfigureColorProfile(*colorFlag)
+
 	if *showVersion {
 		_, _ = fmt.Fprintf(stdout, "skillet version %s\n", version)
 		return nil

@@ -4,22 +4,34 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/martinemde/skillet/internal/color"
+	"github.com/muesli/termenv"
 )
 
 // createMarkdownRenderer initializes a glamour markdown renderer
 func createMarkdownRenderer(colorMode string) *glamour.TermRenderer {
-	useColors := color.ShouldUseColors(colorMode)
+	var opts []glamour.TermRendererOption
 
-	if !useColors {
+	switch colorMode {
+	case "never":
+		// No colors - return nil to use plain text
 		return nil
+	case "always":
+		// Force TrueColor when user explicitly requests colors
+		// This bypasses TTY detection entirely for piped output
+		opts = append(opts,
+			glamour.WithAutoStyle(),
+			glamour.WithColorProfile(termenv.TrueColor),
+			glamour.WithWordWrap(0),
+		)
+	default: // "auto"
+		// Let glamour auto-detect (includes TTY check)
+		opts = append(opts,
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0),
+		)
 	}
 
-	// Use "auto" style which adapts to terminal background (light/dark)
-	mdRenderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(0), // No wrapping, let terminal handle it
-	)
+	mdRenderer, err := glamour.NewTermRenderer(opts...)
 	if err != nil {
 		// Fallback to nil renderer if initialization fails
 		return nil
