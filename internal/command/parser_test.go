@@ -344,3 +344,51 @@ func TestParse_WithArguments(t *testing.T) {
 		t.Errorf("Content should contain interpolated arguments, got: %s", cmd.Content)
 	}
 }
+
+func TestInterpolateVariables_AppendArgumentsWhenNotPresent(t *testing.T) {
+	content := "No arguments placeholder in content"
+	result := interpolateVariables(content, "/base", "myarg --flag")
+
+	expected := "No arguments placeholder in content\n\nARGUMENTS: myarg --flag"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+}
+
+func TestInterpolateVariables_NoAppendWhenArgumentsEmpty(t *testing.T) {
+	content := "No arguments placeholder in content"
+	result := interpolateVariables(content, "/base", "")
+
+	// Content should remain unchanged when arguments are empty
+	if result != content {
+		t.Errorf("Expected '%s', got '%s'", content, result)
+	}
+}
+
+func TestInterpolateVariables_NoAppendWhenPlaceholderPresent(t *testing.T) {
+	content := "Use $ARGUMENTS here"
+	result := interpolateVariables(content, "/base", "myarg")
+
+	// $ARGUMENTS should be replaced, not appended
+	expected := "Use myarg here"
+	if result != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, result)
+	}
+	// Should NOT contain "ARGUMENTS:" appended at end
+	if strings.Contains(result, "\n\nARGUMENTS:") {
+		t.Error("Should not append ARGUMENTS: when $ARGUMENTS placeholder exists")
+	}
+}
+
+func TestParse_ArgumentsAppendedWhenNotInContent(t *testing.T) {
+	// simple-command.md doesn't contain "$ARGUMENTS" in its content
+	cmd, err := Parse("../../testdata/commands/simple-command.md", "extra args here")
+	if err != nil {
+		t.Fatalf("Failed to parse command: %v", err)
+	}
+
+	// Arguments should be appended as "ARGUMENTS: <value>"
+	if !strings.Contains(cmd.Content, "\n\nARGUMENTS: extra args here") {
+		t.Errorf("Content should have ARGUMENTS appended, got: %s", cmd.Content)
+	}
+}
