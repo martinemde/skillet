@@ -15,6 +15,7 @@ import (
 	"github.com/martinemde/skillet/internal/color"
 	"github.com/martinemde/skillet/internal/command"
 	"github.com/martinemde/skillet/internal/commandpath"
+	"github.com/martinemde/skillet/internal/completion"
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
@@ -48,8 +49,9 @@ var boolFlags = map[string]bool{
 // optionalValueFlags are flags that can optionally take a value.
 // When used without a value, they use the specified default.
 var optionalValueFlags = map[string]string{
-	"-parse":  "-",
-	"--parse": "-",
+	"-parse":     "-",
+	"--parse":    "-",
+	"--complete": "", // Empty prefix means complete all names
 }
 
 func main() {
@@ -113,6 +115,11 @@ func separateFlags(args []string) ([]string, []string) {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	// Handle completion subcommand before flag parsing
+	if len(args) > 1 && args[1] == "completion" {
+		return runCompletion(args[2:], stdout, stderr)
+	}
+
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.SetOutput(stderr)
 
@@ -132,6 +139,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
 		colorFlag      = flags.String("color", "auto", "Control color output (auto, always, never)")
+		completePrefix = flags.String("complete", "", "Output completion names matching prefix (for shell completion)")
 	)
 	// Add alias for --quiet
 	flags.BoolVar(quiet, "quiet", false, "Quiet mode - suppress all output except errors")
@@ -158,6 +166,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if *listSkills {
 		return listAvailable(stdout, *colorFlag)
+	}
+
+	// Handle --complete for shell completion (hidden from help)
+	if flags.Lookup("complete").Value.String() != "" || containsFlag(flagArgs, "--complete") {
+		completion.PrintCompletions(stdout, *completePrefix)
+		return nil
 	}
 
 	// Handle --parse mode: format stream-json input without running claude
@@ -333,6 +347,29 @@ func runParseMode(input string, stdout io.Writer, verbose, debug, showUsage bool
 	})
 
 	return form.Format(reader)
+}
+
+// runCompletion handles the `completion` subcommand.
+func runCompletion(args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		shells := completion.SupportedShells()
+		_, _ = fmt.Fprintf(stderr, "Usage: skillet completion <shell>\n")
+		_, _ = fmt.Fprintf(stderr, "Supported shells: %s\n", strings.Join(shells, ", "))
+		return fmt.Errorf("shell argument required")
+	}
+
+	shell := args[0]
+	return completion.Generate(stdout, shell)
+}
+
+// containsFlag checks if the flag appears in the args (for optional-value flags).
+func containsFlag(args []string, flag string) bool {
+	for _, arg := range args {
+		if arg == flag || strings.HasPrefix(arg, flag+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 func printHelp(w io.Writer, colorMode string) {
