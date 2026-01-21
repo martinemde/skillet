@@ -574,6 +574,9 @@ func listAvailable(w io.Writer, colorMode string) error {
 	overshadowedNameStyle := lipgloss.NewStyle()
 	overshadowedPathStyle := lipgloss.NewStyle()
 	overshadowedLabelStyle := lipgloss.NewStyle()
+	notInvocableNameStyle := lipgloss.NewStyle()
+	notInvocablePathStyle := lipgloss.NewStyle()
+	notInvocableLabelStyle := lipgloss.NewStyle()
 	noItemsStyle := lipgloss.NewStyle().Italic(true)
 	namespaceStyle := lipgloss.NewStyle().Italic(true)
 
@@ -590,6 +593,13 @@ func listAvailable(w io.Writer, colorMode string) error {
 		overshadowedLabelStyle = overshadowedLabelStyle.
 			Foreground(lipgloss.Color("8")).
 			Italic(true)
+		notInvocableNameStyle = notInvocableNameStyle.
+			Foreground(lipgloss.Color("8"))
+		notInvocablePathStyle = notInvocablePathStyle.
+			Foreground(lipgloss.Color("8"))
+		notInvocableLabelStyle = notInvocableLabelStyle.
+			Foreground(lipgloss.Color("8")).
+			Italic(true)
 		noItemsStyle = noItemsStyle.Foreground(lipgloss.Color("8")) // Dim
 		namespaceStyle = namespaceStyle.Foreground(lipgloss.Color("8"))
 	}
@@ -601,6 +611,9 @@ func listAvailable(w io.Writer, colorMode string) error {
 		overshadowedNameStyle:  overshadowedNameStyle,
 		overshadowedPathStyle:  overshadowedPathStyle,
 		overshadowedLabelStyle: overshadowedLabelStyle,
+		notInvocableNameStyle:  notInvocableNameStyle,
+		notInvocablePathStyle:  notInvocablePathStyle,
+		notInvocableLabelStyle: notInvocableLabelStyle,
 		namespaceStyle:         namespaceStyle,
 	}
 
@@ -620,13 +633,18 @@ func listAvailable(w io.Writer, colorMode string) error {
 	} else {
 		skillItems := make([]listableItem, len(skills))
 		for i, s := range skills {
-			skillItems[i] = listableItem{
+			item := listableItem{
 				Name:         s.Name,
 				Namespace:    s.Namespace,
 				SourceName:   s.Source.Name,
 				Path:         discovery.RelativePath(s),
 				Overshadowed: s.Overshadowed,
 			}
+			// Parse skill to check user-invocable status (ignore errors, default to invocable)
+			if parsed, err := skill.Parse(s.Path, ""); err == nil {
+				item.NotUserInvocable = !parsed.IsUserInvocable()
+			}
+			skillItems[i] = item
 		}
 		lines = append(lines, formatResourceList(skillItems, styles)...)
 	}
@@ -663,11 +681,12 @@ func listAvailable(w io.Writer, colorMode string) error {
 
 // listableItem represents a resource (skill or command) that can be listed
 type listableItem struct {
-	Name         string
-	Namespace    string
-	SourceName   string
-	Path         string
-	Overshadowed bool
+	Name             string
+	Namespace        string
+	SourceName       string
+	Path             string
+	Overshadowed     bool
+	NotUserInvocable bool // user-invocable: false in frontmatter
 }
 
 // listStyles holds the lipgloss styles for resource listing
@@ -677,6 +696,9 @@ type listStyles struct {
 	overshadowedNameStyle  lipgloss.Style
 	overshadowedPathStyle  lipgloss.Style
 	overshadowedLabelStyle lipgloss.Style
+	notInvocableNameStyle  lipgloss.Style
+	notInvocablePathStyle  lipgloss.Style
+	notInvocableLabelStyle lipgloss.Style
 	namespaceStyle         lipgloss.Style
 }
 
@@ -707,6 +729,12 @@ func formatResourceList(items []listableItem, styles listStyles) []string {
 			name := styles.overshadowedNameStyle.Render(displayName)
 			path := styles.overshadowedPathStyle.Render(item.Path)
 			label := styles.overshadowedLabelStyle.Render(" (overshadowed)")
+			lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
+		} else if item.NotUserInvocable {
+			displayName := item.Name + " " + styles.namespaceStyle.Render("("+sourceInfo+")")
+			name := styles.notInvocableNameStyle.Render(displayName)
+			path := styles.notInvocablePathStyle.Render(item.Path)
+			label := styles.notInvocableLabelStyle.Render(" (not-invocable)")
 			lines = append(lines, fmt.Sprintf("  %s%s  %s%s", name, padding, path, label))
 		} else {
 			name := styles.nameStyle.Render(item.Name) + " " + styles.namespaceStyle.Render("("+sourceInfo+")")
