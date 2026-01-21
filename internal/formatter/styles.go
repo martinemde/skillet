@@ -1,11 +1,10 @@
 package formatter
 
-import (
-	"github.com/charmbracelet/lipgloss"
-	"github.com/martinemde/skillet/internal/color"
-)
+import "github.com/charmbracelet/lipgloss"
 
-// Icon and style definitions for terminal output
+// Icon and style definitions for terminal output.
+// Colors are automatically handled by the global lipgloss color profile
+// which is configured by color.ConfigureColorProfile() based on --color flag.
 var (
 	successIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
 	errorIcon   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).SetString("✗")
@@ -27,21 +26,3 @@ var (
 			MarginTop(0).
 			MarginBottom(1)
 )
-
-// applyColorToIcon applies or removes color from an icon style based on color mode
-func applyColorToIcon(icon lipgloss.Style, colorMode string) lipgloss.Style {
-	if !color.ShouldUseColors(colorMode) {
-		// Return a plain style without color
-		return lipgloss.NewStyle().SetString(icon.Value())
-	}
-	return icon
-}
-
-// applyColorToStyle applies or removes color from a style based on color mode
-func applyColorToStyle(style lipgloss.Style, colorMode string) lipgloss.Style {
-	if !color.ShouldUseColors(colorMode) {
-		// Return a plain style without color, but preserve other properties like margin
-		return lipgloss.NewStyle()
-	}
-	return style
-}

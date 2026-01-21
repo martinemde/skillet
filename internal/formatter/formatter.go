@@ -75,7 +75,7 @@ func (f *legacyFormatter) Format(input io.Reader) error {
 	// Start scanner goroutine that reads input and writes to pipe
 	scanErr := make(chan error, 1)
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		scanner := bufio.NewScanner(input)
 		const maxScannerBuffer = 1024 * 1024

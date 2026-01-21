@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/martinemde/skillet/internal/color"
 )
 
 // TerminalFormatter formats output for normal (non-verbose) terminal mode
@@ -53,11 +52,10 @@ func (f *TerminalFormatter) Format(events <-chan StreamEvent) error {
 
 // printSystemInit prints the system initialization message
 func (f *TerminalFormatter) printSystemInit(data SystemInitData) {
-	icon := applyColorToIcon(successIcon, f.color)
 	if data.SkillName != "" {
-		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", icon.String(), data.SkillName)
+		_, _ = fmt.Fprintf(f.output, "%s Starting %s\n", successIcon.String(), data.SkillName)
 	} else {
-		_, _ = fmt.Fprintf(f.output, "%s Starting\n", icon.String())
+		_, _ = fmt.Fprintf(f.output, "%s Starting\n", successIcon.String())
 	}
 }
 
@@ -77,7 +75,6 @@ func (f *TerminalFormatter) printToolOperation(tool ToolOperation) {
 	case "empty":
 		icon = emptyIcon
 	}
-	icon = applyColorToIcon(icon, f.color)
 
 	// Format tool line
 	line := fmt.Sprintf("%s %s", icon.String(), tool.Name)
@@ -85,8 +82,7 @@ func (f *TerminalFormatter) printToolOperation(tool ToolOperation) {
 		line += " " + tool.Target
 	}
 	if tool.Status == "error" && tool.Error != "" {
-		style := applyColorToStyle(dimStyle, f.color)
-		line += style.Render(fmt.Sprintf(" (%s)", tool.Error))
+		line += dimStyle.Render(fmt.Sprintf(" (%s)", tool.Error))
 	}
 	_, _ = fmt.Fprintln(f.output, line)
 }
@@ -107,8 +103,7 @@ func (f *TerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 
 		// Show the most recently completed task first (dimmed with ☒)
 		if lastCompleted != "" {
-			style := applyColorToStyle(dimStyle, f.color)
-			_, _ = fmt.Fprintf(f.output, "%s\n", style.Render("☒ "+lastCompleted))
+			_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☒ "+lastCompleted))
 		}
 
 		// Show remaining tasks
@@ -125,8 +120,7 @@ func (f *TerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 					_, _ = fmt.Fprintf(f.output, "☐ %s\n", content)
 				} else {
 					// Pending: dimmed with empty checkbox
-					style := applyColorToStyle(dimStyle, f.color)
-					_, _ = fmt.Fprintf(f.output, "%s\n", style.Render("☐ "+content))
+					_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☐ "+content))
 				}
 			}
 		}
@@ -144,11 +138,9 @@ func (f *TerminalFormatter) printFinalResult(data FinalResultData) {
 	// Print completion status
 	_, _ = fmt.Fprintln(f.output)
 	if data.IsError {
-		icon := applyColorToIcon(errorIcon, f.color)
-		_, _ = fmt.Fprintln(f.output, icon.String()+" Failed")
+		_, _ = fmt.Fprintln(f.output, errorIcon.String()+" Failed")
 	} else {
-		icon := applyColorToIcon(successIcon, f.color)
-		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", icon.String(), data.Elapsed.Seconds())
+		_, _ = fmt.Fprintf(f.output, "%s Completed in %.1fs\n", successIcon.String(), data.Elapsed.Seconds())
 	}
 }
 
@@ -184,19 +176,14 @@ func (f *TerminalFormatter) printUsage(usage *Usage) {
 		}
 	}
 
-	// Create styled table with color support
-	borderStyle := lipgloss.NewStyle()
-	if color.ShouldUseColors(f.color) {
-		borderStyle = borderStyle.Foreground(lipgloss.Color("8"))
-	}
-
+	// Create styled table - colors are handled by global lipgloss profile
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(borderStyle).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if col == 0 {
 				// Metric name column - dim style
-				return applyColorToStyle(dimStyle, f.color)
+				return dimStyle
 			}
 			// Value column - normal style
 			return lipgloss.NewStyle()
