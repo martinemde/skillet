@@ -5,6 +5,7 @@ before:
   hooks:
     - go mod tidy
     - go test ./...
+    - sh -c "mkdir -p completions && go run ./cmd/skillet completion bash > completions/skillet.bash && go run ./cmd/skillet completion zsh > completions/_skillet && go run ./cmd/skillet completion fish > completions/skillet.fish"
 
 builds:
   - id: skillet
@@ -36,6 +37,7 @@ archives:
     files:
       - README.md
       - LICENSE*
+      - completions/*
 
 checksum:
   name_template: "checksums.txt"
@@ -94,5 +96,8 @@ brews:
     license: MIT
     install: |
       bin.install "skillet"
+      bash_completion.install "completions/skillet.bash" => "skillet"
+      zsh_completion.install "completions/_skillet"
+      fish_completion.install "completions/skillet.fish"
     test: |
       system "#{bin}/skillet", "--version"
