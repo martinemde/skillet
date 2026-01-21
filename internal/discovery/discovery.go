@@ -112,11 +112,21 @@ func (f *DirectoryFinder) Find(source skillpath.Source) ([]Skill, error) {
 			return nil
 		}
 
+		// Prepend source namespace if present (for plugin sources)
+		fullNamespace := namespace
+		if source.Namespace != "" {
+			if namespace != "" {
+				fullNamespace = source.Namespace + ":" + namespace
+			} else {
+				fullNamespace = source.Namespace
+			}
+		}
+
 		skills = append(skills, Skill{
 			Name:      name,
 			Path:      path,
 			Source:    source,
-			Namespace: namespace,
+			Namespace: fullNamespace,
 		})
 
 		return nil
