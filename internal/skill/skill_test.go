@@ -387,3 +387,101 @@ func TestInterpolateVariables_NoAppendWhenPlaceholderPresent(t *testing.T) {
 		t.Error("Should not append ARGUMENTS: when $ARGUMENTS placeholder exists")
 	}
 }
+
+func TestParse_ClaudeSpecSkill(t *testing.T) {
+	skill, err := Parse("../../testdata/claude-spec-skill/SKILL.md", "")
+	if err != nil {
+		t.Fatalf("Failed to parse Claude spec skill: %v", err)
+	}
+
+	// Test Claude Code spec fields
+	if skill.Name != "claude-spec-skill" {
+		t.Errorf("Expected name 'claude-spec-skill', got '%s'", skill.Name)
+	}
+
+	if skill.ArgumentHint != "[issue-number] [--verbose]" {
+		t.Errorf("Expected argument-hint '[issue-number] [--verbose]', got '%s'", skill.ArgumentHint)
+	}
+
+	if !skill.DisableModelInvocation {
+		t.Error("Expected disable-model-invocation to be true")
+	}
+
+	if skill.UserInvocable == nil || *skill.UserInvocable != false {
+		t.Error("Expected user-invocable to be false")
+	}
+
+	if skill.IsUserInvocable() {
+		t.Error("IsUserInvocable() should return false when user-invocable is false")
+	}
+
+	if skill.AllowedTools != "Read Write Bash(git:*)" {
+		t.Errorf("Unexpected allowed-tools: %s", skill.AllowedTools)
+	}
+
+	if skill.Model != "claude-sonnet-4-5-20250929" {
+		t.Errorf("Expected model 'claude-sonnet-4-5-20250929', got '%s'", skill.Model)
+	}
+
+	if skill.Context != "fork" {
+		t.Errorf("Expected context 'fork', got '%s'", skill.Context)
+	}
+
+	if skill.Agent != "reviewer" {
+		t.Errorf("Expected agent 'reviewer', got '%s'", skill.Agent)
+	}
+
+	// Hooks should be parsed (as any type for now)
+	if skill.Hooks == nil {
+		t.Error("Expected hooks to be parsed")
+	}
+}
+
+func TestParse_DerivedNameSkill(t *testing.T) {
+	skill, err := Parse("../../testdata/derived-name-skill/SKILL.md", "")
+	if err != nil {
+		t.Fatalf("Failed to parse derived name skill: %v", err)
+	}
+
+	// Name should be derived from directory
+	if skill.Name != "derived-name-skill" {
+		t.Errorf("Expected name 'derived-name-skill' (derived from directory), got '%s'", skill.Name)
+	}
+}
+
+func TestIsUserInvocable_DefaultTrue(t *testing.T) {
+	skill := &Skill{
+		Name:        "test-skill",
+		Description: "Test",
+	}
+
+	if !skill.IsUserInvocable() {
+		t.Error("IsUserInvocable() should return true when UserInvocable is nil (default)")
+	}
+}
+
+func TestIsUserInvocable_ExplicitTrue(t *testing.T) {
+	invocable := true
+	skill := &Skill{
+		Name:          "test-skill",
+		Description:   "Test",
+		UserInvocable: &invocable,
+	}
+
+	if !skill.IsUserInvocable() {
+		t.Error("IsUserInvocable() should return true when UserInvocable is explicitly true")
+	}
+}
+
+func TestIsUserInvocable_ExplicitFalse(t *testing.T) {
+	invocable := false
+	skill := &Skill{
+		Name:          "test-skill",
+		Description:   "Test",
+		UserInvocable: &invocable,
+	}
+
+	if skill.IsUserInvocable() {
+		t.Error("IsUserInvocable() should return false when UserInvocable is explicitly false")
+	}
+}

@@ -18,17 +18,23 @@ var (
 
 // Skill represents a parsed SKILL.md file
 type Skill struct {
-	// Frontmatter fields
-	Name                   string            `yaml:"name"`
-	Description            string            `yaml:"description"`
-	License                string            `yaml:"license,omitempty"`
-	Compatibility          string            `yaml:"compatibility,omitempty"`
-	Metadata               map[string]string `yaml:"metadata,omitempty"`
-	AllowedTools           string            `yaml:"allowed-tools,omitempty"`
-	Model                  string            `yaml:"model,omitempty"`
-	Version                string            `yaml:"version,omitempty"`
-	DisableModelInvocation bool              `yaml:"disable-model-invocation,omitempty"`
-	Mode                   bool              `yaml:"mode,omitempty"`
+	// Claude Code spec fields
+	Name                   string `yaml:"name,omitempty"`                     // Display name (defaults to directory name)
+	Description            string `yaml:"description"`                        // What the skill does and when to use it
+	ArgumentHint           string `yaml:"argument-hint,omitempty"`            // Hint shown during autocomplete
+	DisableModelInvocation bool   `yaml:"disable-model-invocation,omitempty"` // Prevent automatic loading
+	UserInvocable          *bool  `yaml:"user-invocable,omitempty"`           // Show in / menu (default: true)
+	AllowedTools           string `yaml:"allowed-tools,omitempty"`            // Tools allowed without permission
+	Model                  string `yaml:"model,omitempty"`                    // Model to use
+	Context                string `yaml:"context,omitempty"`                  // "fork" for forked subagent
+	Agent                  string `yaml:"agent,omitempty"`                    // Subagent type when context: fork
+	Hooks                  any    `yaml:"hooks,omitempty"`                    // Hooks scoped to skill lifecycle
+
+	// agentskills.io spec fields
+	License       string            `yaml:"license,omitempty"`
+	Compatibility string            `yaml:"compatibility,omitempty"`
+	Metadata      map[string]string `yaml:"metadata,omitempty"`
+	Version       string            `yaml:"version,omitempty"`
 
 	// Parsed content
 	Content string
@@ -68,6 +74,11 @@ func ParseWithBaseDir(skillPath string, baseDir string, arguments string) (*Skil
 	}
 
 	skill.BaseDir = baseDir
+
+	// Derive name from directory if not provided
+	if skill.Name == "" {
+		skill.Name = filepath.Base(baseDir)
+	}
 
 	// Interpolate variables
 	skill.Content = interpolateVariables(skill.Content, baseDir, arguments)
@@ -112,6 +123,12 @@ func interpolateVariables(content, baseDir, arguments string) string {
 	}
 
 	return content
+}
+
+// IsUserInvocable returns whether the skill should appear in the / menu.
+// Returns true if UserInvocable is nil (default) or explicitly true.
+func (s *Skill) IsUserInvocable() bool {
+	return s.UserInvocable == nil || *s.UserInvocable
 }
 
 // Validate checks that required fields are present and valid
