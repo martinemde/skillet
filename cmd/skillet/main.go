@@ -16,6 +16,7 @@ import (
 	"github.com/martinemde/skillet/internal/command"
 	"github.com/martinemde/skillet/internal/commandpath"
 	"github.com/martinemde/skillet/internal/completion"
+	"github.com/martinemde/skillet/internal/converter"
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
@@ -49,9 +50,10 @@ var boolFlags = map[string]bool{
 // optionalValueFlags are flags that can optionally take a value.
 // When used without a value, they use the specified default.
 var optionalValueFlags = map[string]string{
-	"-parse":     "-",
-	"--parse":    "-",
-	"--complete": "", // Empty prefix means complete all names
+	"-parse":             "-",
+	"--parse":            "-",
+	"--complete":         "", // Empty prefix means complete all names
+	"--convert-to-skill": "", // Empty means use default output location
 }
 
 func main() {
@@ -140,6 +142,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
 		colorFlag      = flags.String("color", "auto", "Control color output (auto, always, never)")
 		completePrefix = flags.String("complete", "", "Output completion names matching prefix (for shell completion)")
+		convertToSkill = flags.String("convert-to-skill", "", "Convert command to skill (optionally specify output path)")
+		forceConvert   = flags.Bool("force", false, "Overwrite existing skill when converting")
 	)
 	// Add alias for --quiet
 	flags.BoolVar(quiet, "quiet", false, "Quiet mode - suppress all output except errors")
@@ -220,6 +224,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 			}
 			resourceName = cmd.Name
 		}
+	}
+
+	// Handle --convert-to-skill mode
+	if flags.Lookup("convert-to-skill").Value.String() != "" || containsFlag(flagArgs, "--convert-to-skill") {
+		if cmd == nil {
+			if parsedSkill != nil {
+				// A skill was resolved instead of a command - check for overshadowed command
+				return checkForOvershadowedCommand(parsedSkill.Name)
+			}
+			return fmt.Errorf("--convert-to-skill requires a command to convert")
+		}
+		return runConvertToSkill(stdout, resourcePath, *convertToSkill, *model, *allowedTools, *forceConvert, *colorFlag)
 	}
 
 	// Require --prompt when no skill/command is provided
@@ -464,6 +480,8 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
 		fmt.Sprintf("  %s     Output format (overrides pretty formatting)", optionStyle.Render("--output-format")),
 		fmt.Sprintf("  %s             Color output: auto, always, never", optionStyle.Render("--color")),
+		fmt.Sprintf("  %s  Convert command to skill (optional: output path)", optionStyle.Render("--convert-to-skill")),
+		fmt.Sprintf("  %s             Overwrite existing skill when converting", optionStyle.Render("--force")),
 	)
 
 	// Render examples with markdown
@@ -824,4 +842,82 @@ func buildCommandSystemPrompt(c *command.Command) string {
 	}
 	sb.WriteString(c.Content)
 	return sb.String()
+}
+
+// checkForOvershadowedCommand checks if a command with the given name exists but is overshadowed by a skill
+func checkForOvershadowedCommand(name string) error {
+	// Look for commands with this name
+	cmdPath, err := commandpath.New()
+	if err != nil {
+		return fmt.Errorf("'%s' is a skill, not a command (--convert-to-skill only works with commands)", name)
+	}
+
+	cmdDisc := command.NewDiscoverer(cmdPath)
+	commands, err := cmdDisc.DiscoverByName(name)
+	if err != nil || len(commands) == 0 {
+		return fmt.Errorf("'%s' is a skill, not a command (--convert-to-skill only works with commands)", name)
+	}
+
+	// Found a command with the same name - provide helpful error
+	cmd := commands[0]
+	return fmt.Errorf("'%s' resolved to a skill, but a command with the same name exists at:\n  %s\n\nUse the explicit path to convert the command:\n  skillet %s --convert-to-skill --force", name, cmd.Path, cmd.Path)
+}
+
+// runConvertToSkill converts a command to a skill
+func runConvertToSkill(w io.Writer, commandPath, outputDir, model, allowedTools string, force bool, colorMode string) error {
+	useColors := color.ShouldUseColors(colorMode)
+
+	// Create converter config
+	cfg := converter.Config{
+		CommandPath:  commandPath,
+		OutputDir:    outputDir,
+		Model:        model,
+		AllowedTools: allowedTools,
+		Force:        force,
+	}
+
+	// Run conversion
+	result, err := converter.Convert(cfg)
+	if err != nil {
+		return err
+	}
+
+	// Define styles
+	successStyle := lipgloss.NewStyle().Bold(true)
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle()
+	guidanceStyle := lipgloss.NewStyle().Italic(true)
+
+	if useColors {
+		successStyle = successStyle.Foreground(lipgloss.Color("2")) // Green
+		labelStyle = labelStyle.Foreground(lipgloss.Color("8"))     // Dim
+		valueStyle = valueStyle.Foreground(lipgloss.Color("7"))     // Light gray
+		guidanceStyle = guidanceStyle.Foreground(lipgloss.Color("3"))
+	}
+
+	// Print success message
+	_, _ = fmt.Fprintln(w, successStyle.Render("✓ Converted command to skill"))
+	_, _ = fmt.Fprintln(w)
+
+	// Print source and destination
+	_, _ = fmt.Fprintf(w, "  %s %s\n", labelStyle.Render("Source:"), valueStyle.Render(commandPath))
+	_, _ = fmt.Fprintf(w, "  %s  %s\n", labelStyle.Render("Skill:"), valueStyle.Render(result.SkillPath))
+	_, _ = fmt.Fprintln(w)
+
+	// Print applied fields
+	_, _ = fmt.Fprintln(w, labelStyle.Render("  Frontmatter applied:"))
+	for key, value := range result.AppliedFields {
+		_, _ = fmt.Fprintf(w, "    %s: %s\n", key, value)
+	}
+	_, _ = fmt.Fprintln(w)
+
+	// Print guidance
+	if len(result.Guidance) > 0 {
+		_, _ = fmt.Fprintln(w, labelStyle.Render("  You may want to review:"))
+		for _, g := range result.Guidance {
+			_, _ = fmt.Fprintf(w, "    %s %s\n", guidanceStyle.Render("•"), g)
+		}
+	}
+
+	return nil
 }

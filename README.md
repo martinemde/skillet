@@ -22,47 +22,46 @@ Claude skills as _shell_ scripts with clean, beautiful output. :chefkiss:
 # Runs .claude/skills/<skill-bame> as a command
 skillet skill-name
 
+# See all the files, commands, and output.
+skillet skill-name --verbose
+
 # Run a remote skill (e.g. the test skill from this repo)
 skillet https://raw.githubusercontent.com/martinemde/skillet/refs/heads/main/.claude/skills/test-skill/SKILL.md
 ```
 
 ## So What?
 
-Sometimes you want to run claude like a shell script: "generate a summary of this transcript."
-Sometimes you want to be able to run it hundreds of times.
-
-With Skillet:
-
-1. Make a `summarize-transcript` skill
-2. Run `skillet summarize-transcript -p "$filename"`
+Skillet makes claude scripting simple and beautiful.
 
 I've made many throw-away headless `claude` scripts. None of them ever work on the first try. They always suck. There's an ugly prompt buried in the middle. It uses the wrong CLI flags, wrong permissions, or just skips permissions entirely. When you get it to run, your feedback is either _nothing_ or an unreadable flood of json.
 
-Skills solve many of these problems by setting allowed tools, model, and more in the frontmatter, but invoking them from the command line undermines the advantage.
+Skills solve many of these problems by setting allowed tools, model, and more in the frontmatter. Skillet reads and parses skills directly, just like claude. Allowed tools, model, and other frontmatter gets fed to `claude` with the correct permissions for the skill.
 
-Skillet reads and parses the skill directly, just like claude, parses the tools, model, and other frontmatter, then runs `claude` with the correct permissions for the skill. Instead of the unpleasant output, Skillet uses Charm terminal formatting to glam up the markdown hidden in that json, showing code, commands, and even errors in a sleek minimal interface with controllable verbosity.
-
-Skillet makes claude scripting simple.
+Instead of the unpleasant or absent output, Skillet uses [Charm](https://charm.land/) to glam up the markdown hidden in claude's json streams and history logs. Skillet formats claude output beautifully, showing code, commands, and even errors in a sleek minimal interface with controllable verbosity.
 
 ## Installation
-
-### Homebrew (macOS/Linux)
 
 ```bash
 brew install martinemde/tap/skillet
 ```
 
-### Install with Go
+Or download a pre-built [release](https://github.com/martinemde/skillet/releases).
+
+## Quick start
+
+1. Have claude make a skill: `Create a claude skill to summarize meeting transcripts`
+2. Run it in claude: `/summarize-transcript "filename"`
+3. Run it with skillet: `skillet summarize-transcript "filename"`
+
+Then script it:
 
 ```bash
-go install github.com/martinemde/skillet/cmd/skillet@latest
+for file in transcripts/*.txt; do
+  skillet summarize-transcript "summarize $file and output to meetings/${file%.txt}.md"
+done
 ```
 
-### Download pre-built binaries
-
-Download the latest release for your platform from the [releases page](https://github.com/martinemde/skillet/releases):
-
-## Usage
+## Cooking with Skillet
 
 ```bash
 # See which skills and commands you can run
@@ -71,9 +70,6 @@ skillet --list
 # By skill name (looks in all .claude/skills/<skill-name>/SKILL.md paths)
 skillet skill-or-command-name
 
-# By command name (looks in all .claude/skills/<namespace>/<command>.md paths)
-skillet namespace:command
-
 # Run a remote URL
 skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 ```
@@ -81,9 +77,17 @@ skillet https://raw.githubusercontent.com/user/repo/main/skill.md
 > [!NOTICE]
 > **Skills are a security risk.** Skills can execute commands, exfiltrate data, and modify files. Only use skills from sources you trust.
 
-## Parse or Review History
+## Convert a Command to a Skill
 
-Skillet can format Claude's history files or `stream-json` output.
+[Commands are deprecated](https://martinemde.com/blog/claude-code-commands-deprecated).
+Easily convert your existing commands to skills with Skillet:
+
+```bash
+# Non-destructive (you'll need to clean up the old commands yourself)
+skillet command --convert-to-skill
+```
+
+## Parse or Review History
 
 - Review past Claude sessions
 - Browse conversation history logs in `~/.claude/projects/`
@@ -93,92 +97,45 @@ Skillet can format Claude's history files or `stream-json` output.
 # Format a saved JSONL file
 skillet --parse conversation.jsonl
 
-# Pipe directly from Claude
+# Pipe directly from Claude Code
 claude -p "explain this code" --verbose --output-format stream-json | skillet --parse
 
-# Read from stdin (explicit)
-cat session.jsonl | skillet --parse -
+# Read from stdin
+cat session.jsonl | skillet --parse
 ```
 
 ### Browsing Claude History
 
+With `fzf` we can make a simple history browser.
 Claude stores conversation logs in `~/.claude/projects/`.
-Here's a cool hack: you can browse them interactively with `fzf`:
 
 ```bash
 # Browse history for current project with live preview
 find ~/.claude/projects/$(pwd | tr '/' '-') -name '*.jsonl' | \
-  fzf --preview '/tmp/skillet --parse {} --color=always --verbose'
+  fzf --preview 'go run ./cmd/skillet --parse {} --verbose --color=always'
 ```
 
-## Testing
+You can `brew install fzf` if you don't already have it.
 
-Run all tests:
+## Developing Skillet
 
-```bash
-go test -v ./...
-```
+Nerd shit (I love you nerds. Let's fry up some eggs or break some shells)
 
-## Examples
-
-### Review Skill
-
-```yaml
----
-name: code-reviewer
-description: Expert code reviewer. Use after making code changes.
-allowed-tools: Read Grep Glob Bash(git:*)
-model: claude-opus-4-5-20251101
-license: Apache-2.0
-metadata:
-  author: example-org
-  version: "1.0.0"
----
-
-# Code Reviewer
-
-Reviews code for quality, security, and best practices.
-
-## Instructions
-
-1. Read the code changes using Read and Grep
-2. Analyze for potential issues
-3. Provide detailed feedback
-```
-
-### With Variable Interpolation
-
-```yaml
----
-name: data-processor
-description: Processes data files. Use for data analysis tasks.
-allowed-tools: Read Write Bash
----
-
-# Data Processor
-
-Process data files from the skill directory.
-
-## Setup
-
-1. Read configuration from {baseDir}/config.json
-2. Load data from {baseDir}/data/input.csv
-3. Write output to {baseDir}/data/output.csv
-```
-
-## Requirements
-
-- Go 1.21 or later
-- Claude CLI installed and configured
-
-## Contributing
-
-Contributions are welcome! Please ensure:
+Make contributions:
 
 1. All tests pass: `go test ./...`
 2. Code follows Go conventions: `go fmt ./...`
 3. New features include tests
 4. Documentation is updated
+
+- Make concise changes
+- Make a second and third pass to ensure your change is focused and clean
+- Test it manually to make sure it looks good (with human eyes)
+
+### Requirements
+
+- Go 1.21 or later
+- Claude CLI installed and configured
 
 ## License
 

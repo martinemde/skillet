@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -577,5 +579,149 @@ func TestSeparateFlags_ParseFlag(t *testing.T) {
 				t.Errorf("Expected %d positional args, got %d: %v", len(tt.expectedPosArgs), len(posArgs), posArgs)
 			}
 		})
+	}
+}
+
+func TestRun_ConvertToSkill_RequiresCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Trying to convert a skill (not a command) should error
+	err := run([]string{"skillet", "../../testdata/simple-skill/SKILL.md", "--convert-to-skill"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Expected error when trying to convert a skill, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "is a skill, not a command") {
+		t.Errorf("Expected 'is a skill, not a command' error, got: %v", err)
+	}
+}
+
+func TestRun_ConvertToSkill_SkillOvershadowsCommand(t *testing.T) {
+	// Create a temp directory with both a skill and command of the same name
+	tmpDir := t.TempDir()
+
+	// Create .claude/commands/test-resource.md
+	cmdDir := filepath.Join(tmpDir, ".claude", "commands")
+	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
+	}
+	cmdContent := "---\ndescription: A test command\n---\n# Test Command\n"
+	if err := os.WriteFile(filepath.Join(cmdDir, "test-resource.md"), []byte(cmdContent), 0o644); err != nil {
+		t.Fatalf("Failed to write command: %v", err)
+	}
+
+	// Create .claude/skills/test-resource/SKILL.md
+	skillDir := filepath.Join(tmpDir, ".claude", "skills", "test-resource")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("Failed to create skills dir: %v", err)
+	}
+	skillContent := "---\nname: test-resource\ndescription: A test skill\n---\n# Test Skill\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatalf("Failed to write skill: %v", err)
+	}
+
+	// Change to temp directory so resolver can find the resources
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	var stdout, stderr bytes.Buffer
+
+	// Trying to convert "test-resource" should resolve to skill and error with helpful message
+	err := run([]string{"skillet", "test-resource", "--convert-to-skill"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Expected error when skill overshadows command, got nil")
+	}
+
+	// Should mention it resolved to a skill
+	if !strings.Contains(err.Error(), "resolved to a skill") {
+		t.Errorf("Error should mention 'resolved to a skill', got: %v", err)
+	}
+
+	// Should show the path to the overshadowed command
+	if !strings.Contains(err.Error(), "test-resource.md") {
+		t.Errorf("Error should mention the command path, got: %v", err)
+	}
+
+	// Should suggest using explicit path
+	if !strings.Contains(err.Error(), "Use the explicit path") {
+		t.Errorf("Error should suggest using explicit path, got: %v", err)
+	}
+}
+
+func TestRun_ConvertToSkill_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	// Convert a command successfully
+	err := run([]string{"skillet", "../../testdata/commands/simple-command.md", "--convert-to-skill=" + tmpDir}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Conversion failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Should show success message
+	if !strings.Contains(output, "Converted command to skill") {
+		t.Errorf("Output should contain success message, got: %s", output)
+	}
+
+	// Should show source and skill paths
+	if !strings.Contains(output, "Source:") || !strings.Contains(output, "Skill:") {
+		t.Errorf("Output should show Source and Skill paths, got: %s", output)
+	}
+
+	// Should show guidance
+	if !strings.Contains(output, "You may want to review") {
+		t.Errorf("Output should show guidance, got: %s", output)
+	}
+
+	// Skill file should exist
+	skillPath := filepath.Join(tmpDir, "simple-command", "SKILL.md")
+	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+		t.Errorf("Skill file should exist at %s", skillPath)
+	}
+}
+
+func TestRun_ConvertToSkill_WithOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	// Convert with model and allowed-tools overrides
+	err := run([]string{
+		"skillet",
+		"../../testdata/commands/simple-command.md",
+		"--convert-to-skill=" + tmpDir,
+		"--model", "haiku",
+		"--allowed-tools", "Bash,Read",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Conversion failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Should show applied overrides
+	if !strings.Contains(output, "haiku") {
+		t.Errorf("Output should show applied model, got: %s", output)
+	}
+	if !strings.Contains(output, "Bash,Read") {
+		t.Errorf("Output should show applied allowed-tools, got: %s", output)
+	}
+
+	// Read the generated skill and verify overrides
+	skillPath := filepath.Join(tmpDir, "simple-command", "SKILL.md")
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("Failed to read skill: %v", err)
+	}
+
+	if !strings.Contains(string(content), "model: haiku") {
+		t.Errorf("Skill should have model: haiku, got: %s", string(content))
+	}
+	if !strings.Contains(string(content), "allowed-tools: Bash,Read") {
+		t.Errorf("Skill should have allowed-tools: Bash,Read, got: %s", string(content))
 	}
 }
