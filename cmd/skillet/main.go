@@ -20,6 +20,7 @@ import (
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
+	"github.com/martinemde/skillet/internal/mcpserver"
 	"github.com/martinemde/skillet/internal/resolver"
 	"github.com/martinemde/skillet/internal/skill"
 	"github.com/martinemde/skillet/internal/skillpath"
@@ -45,6 +46,8 @@ var boolFlags = map[string]bool{
 	"--dry-run": true,
 	"-q":        true,
 	"--quiet":   true,
+	"-mcp":      true,
+	"--mcp":     true,
 }
 
 // optionalValueFlags are flags that can optionally take a value.
@@ -117,6 +120,13 @@ func separateFlags(args []string) ([]string, []string) {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	// Handle --mcp mode early (runs as MCP server for permission prompts)
+	for _, arg := range args[1:] {
+		if arg == "--mcp" || arg == "-mcp" {
+			return mcpserver.Run()
+		}
+	}
+
 	// Handle completion subcommand before flag parsing
 	if len(args) > 1 && args[1] == "completion" {
 		return runCompletion(args[2:], stdout, stderr)
@@ -244,6 +254,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
+	// Get skillet path for MCP permission prompts
+	skilletPath, _ := os.Executable()
+
 	// Build executor config with resolved values
 	config := executor.Config{
 		Prompt:         resolvePromptFromResource(*prompt, parsedSkill, cmd),
@@ -252,6 +265,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
 		PermissionMode: *permissionMode,
 		OutputFormat:   *outputFormat,
+		SkilletPath:    skilletPath,
 	}
 
 	// Create pipe for output

@@ -17,6 +17,7 @@ type Config struct {
 	AllowedTools   string // empty means no restriction
 	PermissionMode string // empty defaults to "acceptEdits"
 	OutputFormat   string // empty defaults to "stream-json"
+	SkilletPath    string // path to skillet binary for MCP permission prompts
 }
 
 // Executor executes the Claude CLI
@@ -50,6 +51,16 @@ func (e *Executor) buildArgs() []string {
 		"--verbose",
 		"--output-format", e.outputFormat(),
 		"--permission-mode", e.permissionMode(),
+	}
+
+	// Add MCP server config for permission prompt handling
+	if e.config.SkilletPath != "" {
+		mcpConfig := fmt.Sprintf(
+			`{"mcpServers":{"skillet":{"command":"%s","args":["--mcp"]}}}`,
+			e.config.SkilletPath,
+		)
+		args = append(args, "--mcp-config", mcpConfig)
+		args = append(args, "--permission-prompt-tool", "mcp__skillet__prompt")
 	}
 
 	if e.config.Model != "" {
