@@ -4,19 +4,25 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/martinemde/skillet/internal/promptserver"
 )
 
 // Config holds the final resolved configuration for executing Claude CLI.
 // All values should be resolved before creating the executor.
 type Config struct {
-	SystemPrompt   string // appended to system prompt; empty means none
-	Prompt         string // user prompt to send
-	Model          string // empty means use default
-	AllowedTools   string // empty means no restriction
-	PermissionMode string // empty defaults to "acceptEdits"
-	OutputFormat   string // empty defaults to "stream-json"
+	SystemPrompt     string // appended to system prompt; empty means none
+	Prompt           string // user prompt to send
+	Model            string // empty means use default
+	AllowedTools     string // empty means no restriction
+	PermissionMode   string // empty defaults to "acceptEdits"
+	OutputFormat     string // empty defaults to "stream-json"
+	SkilletPath      string // path to skillet binary for MCP permission prompts
+	PromptSocketPath string // Unix socket path for prompt server IPC
+	TaskListID       string // Claude Code task list ID
 }
 
 // Executor executes the Claude CLI
@@ -40,6 +46,23 @@ func (e *Executor) Execute(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "claude", e.buildArgs()...)
 	cmd.Stdout = e.stdout
 	cmd.Stderr = e.stderr
+
+	// Build environment variables to pass to child process
+	var envVars []string
+
+	if e.config.PromptSocketPath != "" {
+		envVars = append(envVars, promptserver.SocketEnvVar+"="+e.config.PromptSocketPath)
+	}
+
+	if e.config.TaskListID != "" {
+		envVars = append(envVars, "CLAUDE_CODE_TASK_LIST_ID="+e.config.TaskListID)
+	}
+
+	// Only set cmd.Env if we have custom variables
+	if len(envVars) > 0 {
+		cmd.Env = append(os.Environ(), envVars...)
+	}
+
 	return cmd.Run()
 }
 
@@ -50,6 +73,16 @@ func (e *Executor) buildArgs() []string {
 		"--verbose",
 		"--output-format", e.outputFormat(),
 		"--permission-mode", e.permissionMode(),
+	}
+
+	// Add MCP server config for permission prompt handling
+	if e.config.SkilletPath != "" {
+		mcpConfig := fmt.Sprintf(
+			`{"mcpServers":{"skillet":{"command":"%s","args":["--mcp"]}}}`,
+			e.config.SkilletPath,
+		)
+		args = append(args, "--mcp-config", mcpConfig)
+		args = append(args, "--permission-prompt-tool", "mcp__skillet__prompt")
 	}
 
 	if e.config.Model != "" {

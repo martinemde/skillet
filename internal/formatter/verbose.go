@@ -140,6 +140,8 @@ func (f *VerboseTerminalFormatter) printToolDetails(tool ToolOperation) {
 		f.buildSearchOutput(&content, tool)
 	case "TodoWrite":
 		// Handled by status line
+	case "TaskCreate", "TaskUpdate", "TaskGet", "TaskList":
+		f.buildTaskOutput(&content, tool)
 	default:
 		// For other tools, show basic input/output
 		f.buildGenericToolOutput(&content, tool)
@@ -255,6 +257,69 @@ func (f *VerboseTerminalFormatter) buildGenericToolOutput(w *strings.Builder, to
 	}
 }
 
+// buildTaskOutput writes task-specific output for Task tools
+func (f *VerboseTerminalFormatter) buildTaskOutput(w *strings.Builder, tool ToolOperation) {
+	switch tool.Name {
+	case "TaskCreate":
+		// Show subject and description
+		if subject, ok := tool.Input["subject"].(string); ok {
+			fmt.Fprintf(w, "📋 %s\n", subject)
+		}
+		if desc, ok := tool.Input["description"].(string); ok {
+			if len(desc) > 80 {
+				desc = desc[:77] + "..."
+			}
+			fmt.Fprintln(w, dimStyle.Render(desc))
+		}
+		// Show metadata if present
+		if metadata, ok := tool.Input["metadata"].(map[string]any); ok && len(metadata) > 0 {
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, dimStyle.Render("Metadata:"))
+			for k, v := range metadata {
+				// Capitalize first letter of key
+				key := k
+				if len(k) > 0 {
+					key = strings.ToUpper(k[:1]) + k[1:]
+				}
+				fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("- %s: %v", key, v)))
+			}
+		}
+
+	case "TaskUpdate":
+		// Show what was updated
+		if taskID, ok := tool.Input["taskId"].(string); ok {
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("Task: %s", taskID)))
+		}
+		if status, ok := tool.Input["status"].(string); ok {
+			statusIcon := "○"
+			switch status {
+			case "in_progress":
+				statusIcon = "◐"
+			case "completed":
+				statusIcon = "●"
+			}
+			fmt.Fprintf(w, "%s → %s\n", statusIcon, status)
+		}
+		if subject, ok := tool.Input["subject"].(string); ok {
+			fmt.Fprintln(w, dimStyle.Render(fmt.Sprintf("Subject: %s", subject)))
+		}
+
+	case "TaskGet":
+		// Show retrieved task details from result
+		resultStr := extractResultText(tool.Result)
+		if resultStr != "" {
+			f.buildTruncatedLines(w, resultStr, maxReadOutputLines, "lines")
+		}
+
+	case "TaskList":
+		// Show task list from result
+		resultStr := extractResultText(tool.Result)
+		if resultStr != "" {
+			f.buildTruncatedLines(w, resultStr, maxSearchOutputLines, "tasks")
+		}
+	}
+}
+
 // printTodoStatusLines shows todos as individual status lines
 func (f *VerboseTerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 	// Extract todos from the input
@@ -271,7 +336,7 @@ func (f *VerboseTerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 
 		// Show the most recently completed task first (dimmed with ☒)
 		if lastCompleted != "" {
-			_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☒ "+lastCompleted))
+			_, _ = fmt.Fprintf(f.output, "  %s\n", dimStyle.Render("☒ "+lastCompleted))
 		}
 
 		// Show remaining tasks
@@ -285,10 +350,10 @@ func (f *VerboseTerminalFormatter) printTodoStatusLines(tool ToolOperation) {
 					continue
 				} else if status == "in_progress" {
 					// In-progress: prominent with empty checkbox
-					_, _ = fmt.Fprintf(f.output, "☐ %s\n", content)
+					_, _ = fmt.Fprintf(f.output, "  ☐ %s\n", content)
 				} else {
 					// Pending: dimmed with empty checkbox
-					_, _ = fmt.Fprintf(f.output, "%s\n", dimStyle.Render("☐ "+content))
+					_, _ = fmt.Fprintf(f.output, "  %s\n", dimStyle.Render("☐ "+content))
 				}
 			}
 		}

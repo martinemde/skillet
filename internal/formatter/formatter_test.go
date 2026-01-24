@@ -655,3 +655,235 @@ func TestStripSystemReminders_OnlyReminder(t *testing.T) {
 		t.Errorf("Expected '%s', got '%s'", expected, result)
 	}
 }
+
+func TestFormat_TaskCreate_NonVerbose(t *testing.T) {
+	// TaskCreate should display task subject and description
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TaskCreate","input":{"subject":"Implement authentication","description":"Add login/logout with JWT","activeForm":"Implementing auth","metadata":{"type":"feature","priority":"high"}}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Task created with id: 1"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show subject with checkbox
+	if !strings.Contains(result, "☐ Implement authentication") {
+		t.Errorf("Output should contain task subject with checkbox, got: %s", result)
+	}
+
+	// Should show description
+	if !strings.Contains(result, "Add login/logout with JWT") {
+		t.Errorf("Output should contain task description, got: %s", result)
+	}
+
+	// Should show metadata
+	if !strings.Contains(result, "Metadata:") {
+		t.Errorf("Output should contain metadata header, got: %s", result)
+	}
+
+	// Should NOT show traditional tool format
+	if strings.Contains(result, "✓ TaskCreate") {
+		t.Errorf("Output should not show TaskCreate as a traditional tool, got: %s", result)
+	}
+}
+
+func TestFormat_TaskCreate_Verbose(t *testing.T) {
+	// TaskCreate in verbose mode should show task details in a box
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123","name":"TaskCreate","input":{"subject":"Fix memory leak","description":"The LRU cache is not evicting old entries properly","metadata":{"type":"bug","priority":"critical"}}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"Task created with id: 2"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: true})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show subject with emoji
+	if !strings.Contains(result, "📋 Fix memory leak") {
+		t.Errorf("Output should contain task subject with 📋 emoji, got: %s", result)
+	}
+
+	// Should show description
+	if !strings.Contains(result, "The LRU cache is not evicting old entries properly") {
+		t.Errorf("Output should contain task description, got: %s", result)
+	}
+
+	// Should show metadata
+	if !strings.Contains(result, "Metadata:") {
+		t.Errorf("Output should contain metadata header, got: %s", result)
+	}
+}
+
+func TestFormat_TaskUpdate_StatusChange(t *testing.T) {
+	// TaskUpdate should show status change with visual indicator
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_456","name":"TaskUpdate","input":{"taskId":"1","status":"in_progress"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_456","content":"Task updated"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show status change with half-filled indicator for in_progress
+	if !strings.Contains(result, "◐") {
+		t.Errorf("Output should contain half-filled indicator for in_progress, got: %s", result)
+	}
+
+	if !strings.Contains(result, "in_progress") {
+		t.Errorf("Output should contain status 'in_progress', got: %s", result)
+	}
+
+	// Should show task ID
+	if !strings.Contains(result, "1") {
+		t.Errorf("Output should contain task ID '1', got: %s", result)
+	}
+}
+
+func TestFormat_TaskUpdate_Completed(t *testing.T) {
+	// TaskUpdate to completed should show filled indicator
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_789","name":"TaskUpdate","input":{"taskId":"2","status":"completed"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_789","content":"Task updated"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show filled indicator for completed
+	if !strings.Contains(result, "●") {
+		t.Errorf("Output should contain filled indicator for completed, got: %s", result)
+	}
+
+	if !strings.Contains(result, "completed") {
+		t.Errorf("Output should contain status 'completed', got: %s", result)
+	}
+}
+
+func TestFormat_TaskList(t *testing.T) {
+	// TaskList should show list of tasks
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_abc","name":"TaskList","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_abc","content":"1. Implement auth (in_progress)\n2. Fix memory leak (pending)\n3. Update docs (completed)"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show TaskList confirmation
+	if !strings.Contains(result, "TaskList") {
+		t.Errorf("Output should contain 'TaskList', got: %s", result)
+	}
+}
+
+func TestFormat_TaskGet(t *testing.T) {
+	// TaskGet should show task details
+	input := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_def","name":"TaskGet","input":{"taskId":"1"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_def","content":"Task 1: Implement authentication\nStatus: in_progress\nDescription: Add login/logout with JWT"}]}}`
+
+	var output bytes.Buffer
+
+	f := New(Config{Output: &output, Verbose: false})
+	err := f.Format(strings.NewReader(input))
+
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Should show TaskGet with task ID
+	if !strings.Contains(result, "TaskGet") {
+		t.Errorf("Output should contain 'TaskGet', got: %s", result)
+	}
+
+	if !strings.Contains(result, "1") {
+		t.Errorf("Output should contain task ID '1', got: %s", result)
+	}
+}
+
+func TestParser_ExtractTarget_TaskCreate(t *testing.T) {
+	parser := NewStreamParser("test", "", false)
+
+	target := parser.extractTarget("TaskCreate", map[string]any{
+		"subject":     "My task subject",
+		"description": "Task description",
+	})
+
+	if target != "My task subject" {
+		t.Errorf("Expected 'My task subject', got '%s'", target)
+	}
+}
+
+func TestParser_ExtractTarget_TaskUpdate(t *testing.T) {
+	parser := NewStreamParser("test", "", false)
+
+	// With status
+	target := parser.extractTarget("TaskUpdate", map[string]any{
+		"taskId": "42",
+		"status": "completed",
+	})
+
+	if target != "42 → completed" {
+		t.Errorf("Expected '42 → completed', got '%s'", target)
+	}
+
+	// Without status
+	target = parser.extractTarget("TaskUpdate", map[string]any{
+		"taskId": "42",
+	})
+
+	if target != "42" {
+		t.Errorf("Expected '42', got '%s'", target)
+	}
+}
+
+func TestParser_ExtractTarget_TaskGet(t *testing.T) {
+	parser := NewStreamParser("test", "", false)
+
+	target := parser.extractTarget("TaskGet", map[string]any{
+		"taskId": "123",
+	})
+
+	if target != "123" {
+		t.Errorf("Expected '123', got '%s'", target)
+	}
+}
+
+func TestParser_ExtractTarget_TaskList(t *testing.T) {
+	parser := NewStreamParser("test", "", false)
+
+	target := parser.extractTarget("TaskList", map[string]any{})
+
+	if target != "" {
+		t.Errorf("Expected empty string, got '%s'", target)
+	}
+}

@@ -582,6 +582,106 @@ func TestSeparateFlags_ParseFlag(t *testing.T) {
 	}
 }
 
+func TestSeparateFlags_TaskListFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedFlags   []string
+		expectedPosArgs []string
+	}{
+		{
+			name:            "task-list flag with value",
+			args:            []string{"--task-list", "my-list", "skill-name"},
+			expectedFlags:   []string{"--task-list", "my-list"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "task-list flag with equals",
+			args:            []string{"--task-list=my-list", "skill-name"},
+			expectedFlags:   []string{"--task-list=my-list"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+		{
+			name:            "task-list flag after skill",
+			args:            []string{"skill-name", "--task-list", "my-list"},
+			expectedFlags:   []string{"--task-list", "my-list"},
+			expectedPosArgs: []string{"skill-name"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flagArgs, posArgs := separateFlags(tt.args)
+
+			if len(flagArgs) != len(tt.expectedFlags) {
+				t.Errorf("Expected %d flag args, got %d: %v", len(tt.expectedFlags), len(flagArgs), flagArgs)
+			}
+			for i, expected := range tt.expectedFlags {
+				if i >= len(flagArgs) || flagArgs[i] != expected {
+					t.Errorf("Expected flag arg[%d] = %q, got %q", i, expected, flagArgs[i])
+				}
+			}
+
+			if len(posArgs) != len(tt.expectedPosArgs) {
+				t.Errorf("Expected %d positional args, got %d: %v", len(tt.expectedPosArgs), len(posArgs), posArgs)
+			}
+		})
+	}
+}
+
+func TestResolveTaskListID(t *testing.T) {
+	tests := []struct {
+		name     string
+		flagVal  string
+		envVal   string
+		expected string
+	}{
+		{"flag takes precedence", "flag-list", "env-list", "flag-list"},
+		{"fallback to env", "", "env-list", "env-list"},
+		{"both empty", "", "", ""},
+		{"only flag set", "flag-list", "", "flag-list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore original env value
+			origEnv := os.Getenv("CLAUDE_CODE_TASK_LIST_ID")
+			defer func() {
+				if origEnv != "" {
+					_ = os.Setenv("CLAUDE_CODE_TASK_LIST_ID", origEnv)
+				} else {
+					_ = os.Unsetenv("CLAUDE_CODE_TASK_LIST_ID")
+				}
+			}()
+
+			if tt.envVal != "" {
+				_ = os.Setenv("CLAUDE_CODE_TASK_LIST_ID", tt.envVal)
+			} else {
+				_ = os.Unsetenv("CLAUDE_CODE_TASK_LIST_ID")
+			}
+
+			result := resolveTaskListID(tt.flagVal)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestRun_DryRunWithTaskList(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"skillet", "--dry-run", "--task-list=my-list", "../../testdata/simple-skill/SKILL.md"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Would execute:") {
+		t.Errorf("Dry-run should work with --task-list")
+	}
+}
+
 func TestRun_ConvertToSkill_RequiresCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 

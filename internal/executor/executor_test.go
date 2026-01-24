@@ -215,3 +215,14 @@ func TestGetCommand_QuotesArgs(t *testing.T) {
 		t.Error("Command should quote arguments with spaces")
 	}
 }
+
+func TestBuildArgs_WithTaskListID(t *testing.T) {
+	config := Config{
+		Prompt:     "Test",
+		TaskListID: "my-task-list-123",
+	}
+	exec := New(config, io.Discard, io.Discard)
+	if exec.config.TaskListID != "my-task-list-123" {
+		t.Error("Executor should store the TaskListID")
+	}
+}

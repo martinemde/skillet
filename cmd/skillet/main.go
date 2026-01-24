@@ -20,6 +20,8 @@ import (
 	"github.com/martinemde/skillet/internal/discovery"
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
+	"github.com/martinemde/skillet/internal/mcpserver"
+	"github.com/martinemde/skillet/internal/promptserver"
 	"github.com/martinemde/skillet/internal/resolver"
 	"github.com/martinemde/skillet/internal/skill"
 	"github.com/martinemde/skillet/internal/skillpath"
@@ -45,6 +47,8 @@ var boolFlags = map[string]bool{
 	"--dry-run": true,
 	"-q":        true,
 	"--quiet":   true,
+	"-mcp":      true,
+	"--mcp":     true,
 }
 
 // optionalValueFlags are flags that can optionally take a value.
@@ -117,6 +121,13 @@ func separateFlags(args []string) ([]string, []string) {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	// Handle --mcp mode early (runs as MCP server for permission prompts)
+	for _, arg := range args[1:] {
+		if arg == "--mcp" || arg == "-mcp" {
+			return mcpserver.Run()
+		}
+	}
+
 	// Handle completion subcommand before flag parsing
 	if len(args) > 1 && args[1] == "completion" {
 		return runCompletion(args[2:], stdout, stderr)
@@ -140,6 +151,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
+		taskList       = flags.String("task-list", "", "Task list ID to use (sets CLAUDE_CODE_TASK_LIST_ID)")
 		colorFlag      = flags.String("color", "auto", "Control color output (auto, always, never)")
 		completePrefix = flags.String("complete", "", "Output completion names matching prefix (for shell completion)")
 		convertToSkill = flags.String("convert-to-skill", "", "Convert command to skill (optionally specify output path)")
@@ -244,14 +256,26 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
+	// Get skillet path for MCP permission prompts
+	skilletPath, _ := os.Executable()
+
+	// Start prompt server for handling AskUserQuestion from MCP
+	promptSrv, err := promptserver.New()
+	if err != nil {
+		return fmt.Errorf("failed to create prompt server: %w", err)
+	}
+
 	// Build executor config with resolved values
 	config := executor.Config{
-		Prompt:         resolvePromptFromResource(*prompt, parsedSkill, cmd),
-		SystemPrompt:   buildSystemPromptFromResource(parsedSkill, cmd),
-		Model:          resolveString(*model, resourceModel(parsedSkill, cmd)),
-		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
-		PermissionMode: *permissionMode,
-		OutputFormat:   *outputFormat,
+		Prompt:           resolvePromptFromResource(*prompt, parsedSkill, cmd),
+		SystemPrompt:     buildSystemPromptFromResource(parsedSkill, cmd),
+		Model:            resolveString(*model, resourceModel(parsedSkill, cmd)),
+		AllowedTools:     resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
+		PermissionMode:   *permissionMode,
+		OutputFormat:     *outputFormat,
+		SkilletPath:      skilletPath,
+		PromptSocketPath: promptSrv.SocketPath(),
+		TaskListID:       resolveTaskListID(*taskList),
 	}
 
 	// Create pipe for output
@@ -288,6 +312,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start prompt server for IPC with MCP child processes
+	if err := promptSrv.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start prompt server: %w", err)
+	}
+	defer promptSrv.Stop()
 
 	// Handle interrupt signals
 	sigChan := make(chan os.Signal, 1)
@@ -478,6 +508,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
+		fmt.Sprintf("  %s         Task list ID (sets CLAUDE_CODE_TASK_LIST_ID)", optionStyle.Render("--task-list")),
 		fmt.Sprintf("  %s     Output format (overrides pretty formatting)", optionStyle.Render("--output-format")),
 		fmt.Sprintf("  %s             Color output: auto, always, never", optionStyle.Render("--color")),
 		fmt.Sprintf("  %s  Convert command to skill (optional: output path)", optionStyle.Render("--convert-to-skill")),
@@ -811,6 +842,16 @@ func resolveString(override, fallback string) string {
 		return override
 	}
 	return fallback
+}
+
+// resolveTaskListID returns the task list ID from CLI flag or environment
+// CLI flag takes precedence over environment variable
+func resolveTaskListID(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	// Fallback to existing environment variable
+	return os.Getenv("CLAUDE_CODE_TASK_LIST_ID")
 }
 
 func buildSystemPromptFromResource(s *skill.Skill, c *command.Command) string {
