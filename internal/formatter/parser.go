@@ -303,6 +303,23 @@ func (p *ClaudeStreamParser) extractTarget(toolName string, input map[string]any
 		if pattern, ok := input["pattern"].(string); ok {
 			return pattern
 		}
+	case "TaskCreate":
+		if subject, ok := input["subject"].(string); ok {
+			return subject
+		}
+	case "TaskUpdate":
+		if taskID, ok := input["taskId"].(string); ok {
+			if status, ok := input["status"].(string); ok {
+				return taskID + " → " + status
+			}
+			return taskID
+		}
+	case "TaskGet":
+		if taskID, ok := input["taskId"].(string); ok {
+			return taskID
+		}
+	case "TaskList":
+		return ""
 	}
 	return ""
 }

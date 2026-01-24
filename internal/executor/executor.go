@@ -22,6 +22,7 @@ type Config struct {
 	OutputFormat     string // empty defaults to "stream-json"
 	SkilletPath      string // path to skillet binary for MCP permission prompts
 	PromptSocketPath string // Unix socket path for prompt server IPC
+	TaskListID       string // Claude Code task list ID
 }
 
 // Executor executes the Claude CLI
@@ -46,9 +47,20 @@ func (e *Executor) Execute(ctx context.Context) error {
 	cmd.Stdout = e.stdout
 	cmd.Stderr = e.stderr
 
-	// Pass prompt socket path to MCP child processes via environment
+	// Build environment variables to pass to child process
+	var envVars []string
+
 	if e.config.PromptSocketPath != "" {
-		cmd.Env = append(os.Environ(), promptserver.SocketEnvVar+"="+e.config.PromptSocketPath)
+		envVars = append(envVars, promptserver.SocketEnvVar+"="+e.config.PromptSocketPath)
+	}
+
+	if e.config.TaskListID != "" {
+		envVars = append(envVars, "CLAUDE_CODE_TASK_LIST_ID="+e.config.TaskListID)
+	}
+
+	// Only set cmd.Env if we have custom variables
+	if len(envVars) > 0 {
+		cmd.Env = append(os.Environ(), envVars...)
 	}
 
 	return cmd.Run()

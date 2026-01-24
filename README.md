@@ -117,6 +117,20 @@ find ~/.claude/projects/$(pwd | tr '/' '-') -name '*.jsonl' | \
 
 You can `brew install fzf` if you don't already have it.
 
+### Using Task Lists
+
+Start a skill with a pre-existing task list. This is useful when one agent creates tasks for another to complete.
+
+```bash
+# Run a skill with a specific task list
+skillet --task-list=f766aec0-6085-46cb-9810-320278fd08a2 my-skill
+
+# The task list ID is passed via CLAUDE_CODE_TASK_LIST_ID environment variable
+# Claude will pick up and work on tasks from that list
+```
+
+This enables workflows where a planning agent creates a task list, then skillet runs a specialized skill to complete those tasks autonomously.
+
 ## Developing Skillet
 
 Nerd shit (I love you nerds. Let's fry up some eggs or break some shells)

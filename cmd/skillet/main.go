@@ -151,6 +151,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
 		outputFormat   = flags.String("output-format", "", "Override output format (default: stream-json)")
+		taskList       = flags.String("task-list", "", "Task list ID to use (sets CLAUDE_CODE_TASK_LIST_ID)")
 		colorFlag      = flags.String("color", "auto", "Control color output (auto, always, never)")
 		completePrefix = flags.String("complete", "", "Output completion names matching prefix (for shell completion)")
 		convertToSkill = flags.String("convert-to-skill", "", "Convert command to skill (optionally specify output path)")
@@ -274,6 +275,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		OutputFormat:     *outputFormat,
 		SkilletPath:      skilletPath,
 		PromptSocketPath: promptSrv.SocketPath(),
+		TaskListID:       resolveTaskListID(*taskList),
 	}
 
 	// Create pipe for output
@@ -506,6 +508,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
+		fmt.Sprintf("  %s         Task list ID (sets CLAUDE_CODE_TASK_LIST_ID)", optionStyle.Render("--task-list")),
 		fmt.Sprintf("  %s     Output format (overrides pretty formatting)", optionStyle.Render("--output-format")),
 		fmt.Sprintf("  %s             Color output: auto, always, never", optionStyle.Render("--color")),
 		fmt.Sprintf("  %s  Convert command to skill (optional: output path)", optionStyle.Render("--convert-to-skill")),
@@ -839,6 +842,16 @@ func resolveString(override, fallback string) string {
 		return override
 	}
 	return fallback
+}
+
+// resolveTaskListID returns the task list ID from CLI flag or environment
+// CLI flag takes precedence over environment variable
+func resolveTaskListID(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	// Fallback to existing environment variable
+	return os.Getenv("CLAUDE_CODE_TASK_LIST_ID")
 }
 
 func buildSystemPromptFromResource(s *skill.Skill, c *command.Command) string {
