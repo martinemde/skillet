@@ -21,6 +21,7 @@ import (
 	"github.com/martinemde/skillet/internal/executor"
 	"github.com/martinemde/skillet/internal/formatter"
 	"github.com/martinemde/skillet/internal/mcpserver"
+	"github.com/martinemde/skillet/internal/promptserver"
 	"github.com/martinemde/skillet/internal/resolver"
 	"github.com/martinemde/skillet/internal/skill"
 	"github.com/martinemde/skillet/internal/skillpath"
@@ -257,15 +258,22 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Get skillet path for MCP permission prompts
 	skilletPath, _ := os.Executable()
 
+	// Start prompt server for handling AskUserQuestion from MCP
+	promptSrv, err := promptserver.New()
+	if err != nil {
+		return fmt.Errorf("failed to create prompt server: %w", err)
+	}
+
 	// Build executor config with resolved values
 	config := executor.Config{
-		Prompt:         resolvePromptFromResource(*prompt, parsedSkill, cmd),
-		SystemPrompt:   buildSystemPromptFromResource(parsedSkill, cmd),
-		Model:          resolveString(*model, resourceModel(parsedSkill, cmd)),
-		AllowedTools:   resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
-		PermissionMode: *permissionMode,
-		OutputFormat:   *outputFormat,
-		SkilletPath:    skilletPath,
+		Prompt:           resolvePromptFromResource(*prompt, parsedSkill, cmd),
+		SystemPrompt:     buildSystemPromptFromResource(parsedSkill, cmd),
+		Model:            resolveString(*model, resourceModel(parsedSkill, cmd)),
+		AllowedTools:     resolveString(*allowedTools, resourceAllowedTools(parsedSkill, cmd)),
+		PermissionMode:   *permissionMode,
+		OutputFormat:     *outputFormat,
+		SkilletPath:      skilletPath,
+		PromptSocketPath: promptSrv.SocketPath(),
 	}
 
 	// Create pipe for output
@@ -302,6 +310,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start prompt server for IPC with MCP child processes
+	if err := promptSrv.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start prompt server: %w", err)
+	}
+	defer promptSrv.Stop()
 
 	// Handle interrupt signals
 	sigChan := make(chan os.Signal, 1)

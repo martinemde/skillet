@@ -6,11 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"golang.org/x/term"
+	"github.com/martinemde/skillet/internal/promptserver"
 )
 
 // PromptInput is the input structure for the permission prompt tool
@@ -91,11 +90,12 @@ func handlePrompt(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 
 // handleAskUserQuestion processes AskUserQuestion tool calls
 func handleAskUserQuestion(toolInput map[string]any) (PromptOutput, error) {
-	// Check if we have a TTY for interactive prompts
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	// Get client to connect to parent prompt server
+	client := promptserver.NewClient()
+	if client == nil {
 		return PromptOutput{
 			Behavior: "deny",
-			Message:  "Cannot prompt user: not running in a terminal",
+			Message:  "Cannot prompt user: SKILLET_PROMPT_SOCK not set",
 		}, nil
 	}
 
@@ -108,8 +108,25 @@ func handleAskUserQuestion(toolInput map[string]any) (PromptOutput, error) {
 		}, nil
 	}
 
-	// Prompt user for answers
-	answers, err := promptUser(questions)
+	// Convert to promptserver.Question format
+	psQuestions := make([]promptserver.Question, len(questions))
+	for i, q := range questions {
+		psQuestions[i] = promptserver.Question{
+			Question:    q.Question,
+			Header:      q.Header,
+			MultiSelect: q.MultiSelect,
+			Options:     make([]promptserver.Option, len(q.Options)),
+		}
+		for j, opt := range q.Options {
+			psQuestions[i].Options[j] = promptserver.Option{
+				Label:       opt.Label,
+				Description: opt.Description,
+			}
+		}
+	}
+
+	// Send to parent for prompting
+	answers, err := client.AskUserQuestion(psQuestions)
 	if err != nil {
 		return PromptOutput{
 			Behavior: "deny",

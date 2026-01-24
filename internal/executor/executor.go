@@ -4,20 +4,24 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/martinemde/skillet/internal/promptserver"
 )
 
 // Config holds the final resolved configuration for executing Claude CLI.
 // All values should be resolved before creating the executor.
 type Config struct {
-	SystemPrompt   string // appended to system prompt; empty means none
-	Prompt         string // user prompt to send
-	Model          string // empty means use default
-	AllowedTools   string // empty means no restriction
-	PermissionMode string // empty defaults to "acceptEdits"
-	OutputFormat   string // empty defaults to "stream-json"
-	SkilletPath    string // path to skillet binary for MCP permission prompts
+	SystemPrompt     string // appended to system prompt; empty means none
+	Prompt           string // user prompt to send
+	Model            string // empty means use default
+	AllowedTools     string // empty means no restriction
+	PermissionMode   string // empty defaults to "acceptEdits"
+	OutputFormat     string // empty defaults to "stream-json"
+	SkilletPath      string // path to skillet binary for MCP permission prompts
+	PromptSocketPath string // Unix socket path for prompt server IPC
 }
 
 // Executor executes the Claude CLI
@@ -41,6 +45,12 @@ func (e *Executor) Execute(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "claude", e.buildArgs()...)
 	cmd.Stdout = e.stdout
 	cmd.Stderr = e.stderr
+
+	// Pass prompt socket path to MCP child processes via environment
+	if e.config.PromptSocketPath != "" {
+		cmd.Env = append(os.Environ(), promptserver.SocketEnvVar+"="+e.config.PromptSocketPath)
+	}
+
 	return cmd.Run()
 }
 
