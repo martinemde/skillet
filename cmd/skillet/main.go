@@ -146,7 +146,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		dryRun         = flags.Bool("dry-run", false, "Show the command that would be executed without running it")
 		quiet          = flags.Bool("q", false, "Quiet mode - suppress all output except errors")
 		parseInput     = flags.String("parse", "", "Parse and format stream-json input (file path or - for stdin)")
-		prompt         = flags.String("prompt", "", "Prompt to pass to Claude (required if no skill provided)")
+		prompt         = flags.String("p", "", "Prompt to pass to Claude (required if no skill provided)")
 		model          = flags.String("model", "", "Override model to use (overrides SKILL.md setting)")
 		allowedTools   = flags.String("allowed-tools", "", "Override allowed tools (overrides SKILL.md setting)")
 		permissionMode = flags.String("permission-mode", "", "Override permission mode (default: acceptEdits)")
@@ -159,6 +159,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	)
 	// Add alias for --quiet
 	flags.BoolVar(quiet, "quiet", false, "Quiet mode - suppress all output except errors")
+	// Add alias for --prompt
+	flags.StringVar(prompt, "prompt", "", "Prompt to pass to Claude (required if no skill provided)")
 
 	// Separate flags from positional arguments to support flags in any position
 	flagArgs, posArgs := separateFlags(args[1:])
@@ -504,7 +506,7 @@ func printHelp(w io.Writer, colorMode string) {
 		fmt.Sprintf("  %s           Show the command without running it", optionStyle.Render("--dry-run")),
 		fmt.Sprintf("  %s, %s         Suppress all output except errors", optionStyle.Render("-q"), optionStyle.Render("--quiet")),
 		fmt.Sprintf("  %s             Format stream-json input (file or - for stdin)", optionStyle.Render("--parse")),
-		fmt.Sprintf("  %s            Prompt to pass to Claude (required without skill)", optionStyle.Render("--prompt")),
+		fmt.Sprintf("  %s, %s         Prompt to pass to Claude (required without skill)", optionStyle.Render("-p"), optionStyle.Render("--prompt")),
 		fmt.Sprintf("  %s             Model to use (overrides skill setting)", optionStyle.Render("--model")),
 		fmt.Sprintf("  %s     Allowed tools (overrides skill setting)", optionStyle.Render("--allowed-tools")),
 		fmt.Sprintf("  %s   Permission mode (default: acceptEdits)", optionStyle.Render("--permission-mode")),
