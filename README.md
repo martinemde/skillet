@@ -49,17 +49,9 @@ Or download a pre-built [release](https://github.com/martinemde/skillet/releases
 
 ## Quick start
 
-1. Have claude make a skill: `Create a claude skill to summarize meeting transcripts`
-2. Run it in claude: `/summarize-transcript "filename"`
-3. Run it with skillet: `skillet summarize-transcript "filename"`
+If you run a skill in claude: `/review this commit`
 
-Then script it:
-
-```bash
-for file in transcripts/*.txt; do
-  skillet summarize-transcript "summarize $file and output to meetings/${file%.txt}.md"
-done
-```
+You can run it as a shell script: `skillet review "this commit"`
 
 ## Cooking with Skillet
 
@@ -130,6 +122,16 @@ skillet --task-list=f766aec0-6085-46cb-9810-320278fd08a2 my-skill
 ```
 
 This enables workflows where a planning agent creates a task list, then skillet runs a specialized skill to complete those tasks autonomously.
+
+### Advanced Shell Scripting
+
+You can use skillet in a bash `for` loop to run many times in parallal:
+
+```bash
+for file in transcripts/*.txt; do
+  skillet summarize-transcript "summarize $file and output to meetings/${file%.txt}.md" &
+done
+```
 
 ## Developing Skillet
 
